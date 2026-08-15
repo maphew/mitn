@@ -1,6 +1,6 @@
 # mitn - personal coordination repo for Trilium Notes work
 
-`mitn` ("mitten", "my TN") holds issue tracking, notes, reports, and agent
+`mitn` (mitten, my TN) holds issue tracking, notes, reports, and agent
 configuration for [maphew's](https://github.com/maphew) work on
 [Trilium Notes](https://github.com/TriliumNext/Trilium). It is not the
 Trilium source tree and is not an official TriliumNext project.
@@ -49,9 +49,7 @@ trilium_root="$(git -C "$mitn_root/../trilium" rev-parse --show-toplevel)"
 git -C "$trilium_root" worktree add "$mitn_root/.worktrees/trilium/<purpose>" -b <branch> upstream/main
 ```
 
-See [AGENTS.md](AGENTS.md) for the complete workflow and
-[docs/mybd-portability.md](docs/mybd-portability.md) for what was imported
-from `maphew/mybd` and what was intentionally left behind.
+See [AGENTS.md](AGENTS.md) for the complete workflow.
 
 ## License
 
