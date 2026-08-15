@@ -1,0 +1,8 @@
+# Regenerable raw captures and local build logs stay out of the public repo
+# (public-repository hygiene: no environment dumps; gh data is refetchable).
+*.log
+issue-raw.*
+issue-full.json
+pr-view.txt
+pr-diff.txt
+pr-meta.json
