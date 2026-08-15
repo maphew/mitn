@@ -72,5 +72,3 @@
 # - github.token    → use GITHUB_TOKEN env var instead
 
 agent.profile: "team-maintainer"
-sync:
-    remote: "git+https://github.com/maphew/mitn.git"

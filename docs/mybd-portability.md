@@ -50,6 +50,17 @@ These are capability candidates, not a parallel task list. If actual use shows
 that one is needed, create a Beads issue with a concrete acceptance criterion
 before porting it.
 
+### Same-origin Beads sync note
+
+mitn publishes Beads history under `refs/dolt/data` on its GitHub origin. With
+bd 1.2.1, tracking that GitHub URL as `sync.remote` prevents a fresh
+`bd bootstrap`: the safety guard treats the explicit value as a code-repository
+URL before probing Git origin. Therefore the tracked config intentionally omits
+`sync.remote`. The initial machine has an explicit local Dolt remote, while a
+fresh clone runs `bd bootstrap --yes` to discover the ref, then
+`bd config unset sync.remote` to remove the bootstrap-added tracked value. This
+keeps Git clean without losing the local Dolt remote.
+
 ## Intentionally omitted
 
 The following are project-specific history or unsafe bootstrap material:
