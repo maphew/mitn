@@ -1,0 +1,2 @@
+# Use the Beads merge driver for an explicitly exported JSONL snapshot.
+.beads/issues.jsonl merge=beads

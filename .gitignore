@@ -1,0 +1,29 @@
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
+.beads/proxieddb/
+*.gate.lock*
+
+# Local Trilium source worktrees and build/runtime state
+.worktrees/
+worktrees/
+node_modules/
+dist/
+build/
+
+# Local environment and caches
+.env
+.cache/
+tmp/
+.bv/
+.bt/
+
+# Beads runtime state not covered by .beads/.gitignore
+.beads/interactions.jsonl
+.beads/last-touched
+.beads/.session-start
+
+# Retrospective digests can contain transcript excerpts and private paths
+retro/digests/
