@@ -25,17 +25,17 @@ repository.
 ## Working here
 
 ```bash
-bd bootstrap --yes        # first run after cloning; restores Dolt state
-bd config unset sync.remote  # bd 1.2.1 same-Git-origin bootstrap workaround
+scripts/bootstrap-beads   # first run after cloning; restores Dolt state
 bd prime
 bd ready
 bd list --status=in_progress
 ```
 
-The `config unset` step removes the GitHub URL that bd 1.2.1 writes into the
-tracked config after a successful same-origin bootstrap. The local Dolt remote
-remains configured, while future clean clones can continue auto-detecting
-`refs/dolt/data` from Git origin.
+The wrapper checks that the tracked Beads config is clean, runs
+`bd bootstrap --yes`, fixes local `.beads` permissions, and restores only the
+bootstrap-generated config change. The local Dolt remote remains configured,
+while future clean clones can continue auto-detecting `refs/dolt/data` from Git
+origin.
 
 All durable tasks, blockers, dependencies, and cross-session knowledge use
 Beads. Use `bd remember` for project memory. Do not create Markdown task lists

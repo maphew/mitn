@@ -57,8 +57,8 @@ bd 1.2.1, tracking that GitHub URL as `sync.remote` prevents a fresh
 `bd bootstrap`: the safety guard treats the explicit value as a code-repository
 URL before probing Git origin. Therefore the tracked config intentionally omits
 `sync.remote`. The initial machine has an explicit local Dolt remote, while a
-fresh clone runs `bd bootstrap --yes` to discover the ref, then
-`bd config unset sync.remote` to remove the bootstrap-added tracked value. This
+fresh clone runs `scripts/bootstrap-beads`. The wrapper discovers the ref and
+then restores the clean tracked config after bd adds the same-origin URL. This
 keeps Git clean without losing the local Dolt remote.
 
 ## Intentionally omitted

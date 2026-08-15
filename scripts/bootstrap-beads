@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Recover mitn's Dolt-backed Beads state from refs/dolt/data on Git origin.
+#
+# bd 1.2.1 correctly discovers and clones a same-origin refs/dolt/data ref, but
+# then writes that forge URL as sync.remote in tracked config.yaml. On another
+# fresh clone, the explicit forge URL trips bootstrap's code-repository guard
+# before origin auto-detection. Keep the discovered local Dolt remote and
+# restore only the known bootstrap-generated tracked config change.
+
+set -euo pipefail
+
+repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || {
+  echo "bootstrap-beads: run inside a mitn Git checkout" >&2
+  exit 1
+}
+cd "$repo_root"
+
+config_path=.beads/config.yaml
+if ! git diff --quiet -- "$config_path" ||
+   ! git diff --cached --quiet -- "$config_path"; then
+  echo "bootstrap-beads: $config_path has user changes; refusing to overwrite them" >&2
+  exit 1
+fi
+
+bd bootstrap --yes "$@"
+chmod 700 .beads
+
+if ! git diff --quiet -- "$config_path"; then
+  git restore --source=HEAD --worktree -- "$config_path"
+fi
+
+if ! git diff --quiet -- "$config_path"; then
+  echo "bootstrap-beads: failed to restore $config_path" >&2
+  exit 1
+fi
+
+echo "bootstrap-beads: Beads state restored; tracked config is clean"
