@@ -1,0 +1,440 @@
+#!/usr/bin/env bash
+# contrib-preflight - print (default) or run the narrowest applicable test
+# commands for a set of changed paths in the sibling trilium checkout, plus
+# a typecheck and a whitespace/conflict-marker check, before opening a PR
+# upstream. Embodies TriliumNext/Trilium's own "run the narrowest thing that
+# covers your change" rule (bead mitn-4g8).
+#
+# The test-command logic below is lifted from upstream's own docs, not
+# invented. Sources, quoted where it matters:
+#
+#   - apps/server single-file form and the narrowest-suite policy:
+#       trilium/CLAUDE.md, "Test" section:
+#         "pnpm --filter server test <path-or-pattern>"
+#       and "Running a single test file":
+#         "pnpm --filter server test spec/etapi/search.spec.ts"
+#       and "Run the narrowest suite that covers what you touched... Vitest
+#       treats the trailing argument as a substring filter over test file
+#       paths".
+#   - `pnpm typecheck` as the one true typecheck entry point (never a raw
+#     tsc): trilium/CLAUDE.md, same Test section, and repeated verbatim in
+#     .claude/skills/writing-unit-tests/SKILL.md "Running tests":
+#         "Typecheck with `pnpm typecheck` (never a raw `tsc -p`/`tsc -b`,
+#         which misses the project references)".
+#   - apps/client single-file form:
+#       trilium/.claude/skills/writing-unit-tests/SKILL.md, "Running tests":
+#         "Single file (client): pnpm --filter @triliumnext/client exec
+#         vitest run src/widgets/react/Button.spec.tsx"
+#   - general per-package filtered/whole forms (used for every app/package
+#     other than server, client, trilium-core, trilium-e2e):
+#       same SKILL.md section:
+#         "Filtered (preferred): pnpm --filter <pkg> test <path-or-pattern>"
+#         "Whole package: pnpm --filter <pkg> test"
+#   - packages/trilium-core has no runner of its own and its specs run
+#     through BOTH apps/server (Node/better-sqlite3) and apps/standalone
+#     (happy-dom/sql.js WASM), which is a correctness requirement, not an
+#     optimization:
+#       trilium/.claude/skills/writing-unit-tests/server-and-core.md,
+#       "A core spec runs under BOTH runtimes — verify both before calling
+#       it done":
+#         "Passing `pnpm --filter server exec vitest run <spec>` is not
+#         enough — also run `pnpm --filter standalone exec vitest run
+#         <spec>`."
+#   - packages/trilium-e2e has no runner of its own either and its Playwright
+#     specs run through the server/standalone `e2e` scripts, with no
+#     documented single-file invocation:
+#       trilium/CLAUDE.md, "Testing Strategy":
+#         "E2E tests use Playwright for both server and desktop apps"
+#       and, more specifically:
+#         "E2E tests (packages/trilium-e2e/): Shared Playwright tests, run
+#         via pnpm --filter server e2e or pnpm --filter standalone e2e"
+#
+# Every per-package vitest command below is emitted with an explicit `run`
+# subcommand (`pnpm --filter <pkg> exec vitest run [target]`), even for the
+# apps/server / apps/client / generic forms whose upstream quotes above show
+# the bare `pnpm --filter <pkg> test [target]` form. That bare form runs
+# `vitest [target]` with no run-mode; upstream's own examples are typed by a
+# human at an interactive shell, where vitest's default watch mode is fine
+# and even useful. Run from this script's non-interactive --run mode with no
+# TTY attached, the same bare form enters watch mode and never exits. The
+# explicit run-mode form is a deliberate, minimal deviation from the quoted
+# text above for non-interactive use, not a re-interpretation of what
+# upstream recommends for interactive use.
+#
+# `git diff --check <ref>` (flags trailing whitespace / unresolved conflict
+# markers) is a general pre-commit hygiene check requested by the mitn task
+# spec for this script, not something sourced from upstream Trilium docs.
+# <ref> is the merge-base in auto-detect mode and HEAD when explicit paths
+# are given - a bare `git diff --check` with no ref only compares worktree
+# vs index and is vacuous on a clean checkout.
+#
+# Never run the full suites here (`pnpm test:all`, `test:parallel`,
+# `test:sequential`, `pnpm coverage`) or ESLint - trilium/CLAUDE.md
+# explicitly reserves those for CI / explicit user request.
+
+set -euo pipefail
+
+die() { echo "${0##*/}: $*" >&2; exit 1; }
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  scripts/contrib-preflight [options] [path...]
+
+Prints (default) or runs (--run) the narrowest upstream-Trilium test
+commands for the given changed paths in the sibling trilium checkout, plus
+`pnpm typecheck` and `git diff --check <ref>`. Read-only in the default
+(print) mode.
+
+Input:
+  path...             Explicit changed paths, relative to the trilium repo
+                       root (or absolute, if inside it). If omitted, changed
+                       paths are auto-detected via
+                       `git diff --name-only <merge-base>` against --base.
+
+Options:
+  --run               Actually run each command in the trilium root and
+                       report pass/fail per command; exits non-zero if any
+                       command fails. Default just prints commands+reasons.
+  --base <ref>         Ref to diff against when auto-detecting changed paths
+                       (merge-base, not a raw two-dot diff). Default:
+                       upstream/main. Ignored when explicit paths are given.
+  --trilium-root <dir> Path to the trilium checkout. Default: resolved as
+                       "<mitn-root>/../trilium", where <mitn-root> is this
+                       repo's root (per AGENTS.md's repository-boundary
+                       convention).
+  -h, --help           Show this help and exit.
+
+Examples:
+  scripts/contrib-preflight
+  scripts/contrib-preflight --base upstream/main
+  scripts/contrib-preflight apps/server/src/services/open_id.ts
+  scripts/contrib-preflight --run apps/client/src/widgets/foo.tsx
+USAGE
+}
+
+RUN=0
+BASE="upstream/main"
+TRILIUM_ROOT_OVERRIDE=""
+PATHS=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --run) RUN=1; shift;;
+    --base) [[ $# -ge 2 ]] || die "--base needs a value"; BASE="$2"; shift 2;;
+    --base=*) BASE="${1#--base=}"; shift;;
+    --trilium-root) [[ $# -ge 2 ]] || die "--trilium-root needs a value"; TRILIUM_ROOT_OVERRIDE="$2"; shift 2;;
+    --trilium-root=*) TRILIUM_ROOT_OVERRIDE="${1#--trilium-root=}"; shift;;
+    -h|--help) usage; exit 0;;
+    -*) die "unknown flag: $1";;
+    *) PATHS+=("$1"); shift;;
+  esac
+done
+
+# Resolve the trilium checkout root, mirroring AGENTS.md's repository
+# boundary convention: derive mitn's root from this script's own location
+# (not $PWD), then look for a sibling ../trilium checkout.
+if [[ -n "$TRILIUM_ROOT_OVERRIDE" ]]; then
+  TRILIUM_ROOT="$(git -C "$TRILIUM_ROOT_OVERRIDE" rev-parse --show-toplevel 2>/dev/null)" \
+    || die "--trilium-root '$TRILIUM_ROOT_OVERRIDE' is not a git checkout"
+else
+  mitn_common_git_dir="$(git -C "$SCRIPT_DIR" rev-parse --path-format=absolute --git-common-dir)" \
+    || die "could not resolve mitn's git dir from $SCRIPT_DIR"
+  mitn_root="$(dirname "$mitn_common_git_dir")"
+  TRILIUM_ROOT="$(git -C "$mitn_root/../trilium" rev-parse --show-toplevel 2>/dev/null)" \
+    || die "no trilium checkout found at $mitn_root/../trilium; pass --trilium-root <dir>"
+fi
+
+# --- path normalization -----------------------------------------------
+
+normalize_path() {
+  local p="$1"
+  case "$p" in
+    /*)
+      case "$p" in
+        "$TRILIUM_ROOT"/*) p="${p#"$TRILIUM_ROOT"/}";;
+        "$TRILIUM_ROOT") die "path '$p' is the trilium root itself, not a file";;
+        *) die "path '$p' is outside the trilium root '$TRILIUM_ROOT'";;
+      esac
+      ;;
+  esac
+  p="${p#./}"
+  echo "$p"
+}
+
+# --- changed-path discovery --------------------------------------------
+
+CHANGED_PATHS=()
+if [[ "${#PATHS[@]}" -gt 0 ]]; then
+  for p in "${PATHS[@]}"; do
+    CHANGED_PATHS+=("$(normalize_path "$p")")
+  done
+  # Explicit paths: no merge-base was computed, so scope the hygiene check
+  # below to what's actually staged/modified since the last commit.
+  DIFF_CHECK_REF="HEAD"
+else
+  # Validation and merge-base computation happen directly in this shell
+  # (not inside a process substitution / $(...) subshell) so that die()'s
+  # `exit 1` actually aborts the script instead of only the subshell.
+  git -C "$TRILIUM_ROOT" rev-parse --verify --quiet "$BASE" >/dev/null 2>&1 \
+    || die "base ref '$BASE' not found in $TRILIUM_ROOT (fetch it, or pass --base <ref> or explicit paths)"
+  merge_base="$(git -C "$TRILIUM_ROOT" merge-base "$BASE" HEAD)" \
+    || die "could not compute merge-base of '$BASE' and HEAD in $TRILIUM_ROOT"
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && CHANGED_PATHS+=("$line")
+  done < <(git -C "$TRILIUM_ROOT" diff --name-only "$merge_base")
+  # Auto-detect: scope the hygiene check to the same range the changed-path
+  # list came from, so it isn't vacuous on a clean checkout.
+  DIFF_CHECK_REF="$merge_base"
+fi
+
+[[ "${#CHANGED_PATHS[@]}" -gt 0 ]] || die "no changed paths found (nothing vs '$BASE', and none passed explicitly)"
+
+# --- package resolution --------------------------------------------------
+
+# Resolve a changed path to the app/package dir that owns it. Deleted files
+# and paths that simply aren't checked out locally (e.g. a merge-base diff
+# against a ref whose tree differs from the working copy) still need to
+# resolve - they can't be found by walking the disk from a directory that no
+# longer exists. So: derive the package dir from the path string first for
+# the two shapes this workspace actually uses (apps/<name>/... and
+# packages/<name>/..., always exactly one level deep), and only fall back to
+# the on-disk walk for paths that don't fit that shape (root-level docs,
+# configs, etc - for which "no owning package" is expected and not warned
+# about).
+find_pkg_dir() {
+  local f="$1" dir
+
+  case "$f" in
+    apps/*/*|packages/*/*)
+      local pkg_dir_rel dir_candidate
+      pkg_dir_rel="$(cut -d/ -f1-2 <<<"$f")"
+      dir_candidate="$TRILIUM_ROOT/$pkg_dir_rel"
+      if [[ -f "$dir_candidate/package.json" ]]; then
+        echo "$dir_candidate"
+        return 0
+      fi
+      echo "${0##*/}: no package.json at $pkg_dir_rel; dropping changed path '$f'" >&2
+      return 1
+      ;;
+  esac
+
+  # Fallback: walk up from the file's directory (never past the trilium
+  # root) to the nearest package.json. Root-level files (docs, top-level
+  # configs) have no app/package to map to a narrower test than
+  # typecheck + diff --check.
+  dir="$TRILIUM_ROOT/$(dirname -- "$f")"
+  [[ -d "$dir" ]] || dir="$TRILIUM_ROOT"
+  dir="$(cd -- "$dir" && pwd)"
+  while [[ "$dir" != "$TRILIUM_ROOT" && "$dir" != "/" ]]; do
+    if [[ -f "$dir/package.json" ]]; then
+      echo "$dir"
+      return 0
+    fi
+    dir="$(dirname -- "$dir")"
+  done
+  return 1
+}
+
+pkg_name_of() {
+  local pkg_json="$1"
+  grep -m1 '"name"[[:space:]]*:' "$pkg_json" \
+    | sed -E 's/.*"name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/'
+}
+
+# True (exit 0) iff the package.json's "scripts" object defines "test".
+# Some apps (mobile, web-clipper) have no test script at all; emitting
+# `pnpm --filter <pkg> test` for those would false-fail under --run.
+pkg_has_test_script() {
+  local pkg_json="$1"
+  node -e '
+    const fs = require("fs");
+    const pkg = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+    process.exit(pkg.scripts && pkg.scripts.test ? 0 : 1);
+  ' "$pkg_json" 2>/dev/null
+}
+
+# Same-basename spec sibling, if any (repo convention: *.spec.ts / *.spec.tsx
+# next to the source file - see writing-unit-tests/SKILL.md's canonical
+# FormattingToolbar.tsx / FormattingToolbar.spec.ts example).
+find_sibling_spec() {
+  local abs_dir="$1" base_noext="$2"
+  local cand
+  for ext in .spec.ts .spec.tsx; do
+    cand="$abs_dir/$base_noext$ext"
+    if [[ -f "$cand" ]]; then
+      echo "$cand"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# --- command accumulation (deduped, ordered) ------------------------------
+#
+# Each command is stored as an argv array (CMD_0, CMD_1, ... via a nameref),
+# never as a string to be eval'd, so targets containing spaces or shell
+# metacharacters can't break or inject into the command that runs them.
+
+CMD_COUNT=0
+REASONS=()
+NOTED_NO_TEST=()
+
+add_cmd() {
+  local reason="$1"; shift
+  local candidate i existing_serialized
+  candidate="$(printf '%s\x1f' "$@")"
+  for ((i = 0; i < CMD_COUNT; i++)); do
+    local -n existing="CMD_$i"
+    existing_serialized="$(printf '%s\x1f' "${existing[@]}")"
+    if [[ "$existing_serialized" == "$candidate" ]]; then
+      return 0
+    fi
+  done
+  declare -g -a "CMD_$CMD_COUNT"
+  local -n new_cmd="CMD_$CMD_COUNT"
+  new_cmd=("$@")
+  REASONS+=("$reason")
+  CMD_COUNT=$((CMD_COUNT + 1))
+}
+
+# Print a "no test script" note once per package, instead of a command that
+# would false-fail under --run.
+note_no_test_script() {
+  local pkg_name="$1" p
+  for p in "${NOTED_NO_TEST[@]}"; do
+    [[ "$p" == "$pkg_name" ]] && return 0
+  done
+  NOTED_NO_TEST+=("$pkg_name")
+  echo "# $pkg_name has no test script - typecheck only"
+}
+
+for f in "${CHANGED_PATHS[@]}"; do
+  case "$f" in
+    *.ts|*.tsx|*.mts|*.cts|*.js|*.jsx) ;;
+    *) continue;; # non-source change: no narrower test than typecheck/diff-check
+  esac
+
+  pkg_dir="$(find_pkg_dir "$f")" || continue # no app/package owns this path (warned above if it should have)
+  pkg_dir_rel="${pkg_dir#"$TRILIUM_ROOT"/}"
+  pkg_json="$pkg_dir/package.json"
+  pkg_name="$(pkg_name_of "$pkg_json")" || true
+  [[ -n "$pkg_name" ]] || continue
+
+  rel_in_pkg="${f#"$pkg_dir_rel"/}"
+  base="$(basename -- "$rel_in_pkg")"
+  dir_in_pkg="$(dirname -- "$rel_in_pkg")"
+  abs_dir_in_pkg="$pkg_dir/$dir_in_pkg"
+
+  target=""
+  target_note=""
+  case "$base" in
+    *.spec.ts|*.spec.tsx)
+      target="$rel_in_pkg"
+      target_note="changed file is itself a spec"
+      ;;
+    *)
+      base_noext="${base%.*}"
+      if sibling="$(find_sibling_spec "$abs_dir_in_pkg" "$base_noext")"; then
+        target="${dir_in_pkg}/$(basename -- "$sibling")"
+        [[ "$dir_in_pkg" == "." ]] && target="$(basename -- "$sibling")"
+        target_note="same-name spec found for $rel_in_pkg"
+      else
+        target_note="no same-name spec for $rel_in_pkg; falling back to the containing project's test command"
+      fi
+      ;;
+  esac
+
+  case "$pkg_dir_rel" in
+    apps/server)
+      if [[ -n "$target" ]]; then
+        add_cmd "narrowest apps/server spec ($target_note), run explicitly - trilium/CLAUDE.md 'Running a single test file'" \
+          pnpm --filter server exec vitest run "$target"
+      else
+        add_cmd "$target_note, run explicitly - trilium/CLAUDE.md 'pnpm --filter server test <path-or-pattern>'" \
+          pnpm --filter server exec vitest run
+      fi
+      ;;
+    apps/client)
+      if [[ -n "$target" ]]; then
+        add_cmd "narrowest apps/client spec ($target_note) - writing-unit-tests SKILL.md 'Single file (client)'" \
+          pnpm --filter @triliumnext/client exec vitest run "$target"
+      else
+        add_cmd "$target_note, run explicitly - SKILL.md 'Whole package: pnpm --filter <pkg> test'" \
+          pnpm --filter @triliumnext/client exec vitest run
+      fi
+      ;;
+    packages/trilium-core)
+      if [[ -n "$target" ]]; then
+        add_cmd "trilium-core spec, server (Node) runtime ($target_note) - server-and-core.md 'runs under BOTH runtimes'" \
+          pnpm --filter server exec vitest run "$target"
+        add_cmd "trilium-core spec, standalone (WASM) runtime ($target_note) - server-and-core.md 'runs under BOTH runtimes'" \
+          pnpm --filter standalone exec vitest run "$target"
+      else
+        add_cmd "$target_note (trilium-core has no runner of its own; server runtime), run explicitly - server-and-core.md" \
+          pnpm --filter server exec vitest run
+        add_cmd "$target_note (trilium-core has no runner of its own; standalone runtime), run explicitly - server-and-core.md" \
+          pnpm --filter standalone exec vitest run
+      fi
+      ;;
+    packages/trilium-e2e)
+      add_cmd "trilium-e2e has no runner of its own; server Playwright run - trilium/CLAUDE.md 'Testing Strategy: E2E tests'" \
+        pnpm --filter server e2e
+      add_cmd "trilium-e2e has no runner of its own; standalone Playwright run - trilium/CLAUDE.md 'Testing Strategy: E2E tests'" \
+        pnpm --filter standalone e2e
+      ;;
+    *)
+      if ! pkg_has_test_script "$pkg_json"; then
+        note_no_test_script "$pkg_name"
+      elif [[ -n "$target" ]]; then
+        add_cmd "narrowest $pkg_dir_rel spec ($target_note), run explicitly - SKILL.md 'Filtered (preferred): pnpm --filter <pkg> test <path-or-pattern>'" \
+          pnpm --filter "$pkg_name" exec vitest run "$target"
+      else
+        add_cmd "$target_note, run explicitly - SKILL.md 'Whole package: pnpm --filter <pkg> test'" \
+          pnpm --filter "$pkg_name" exec vitest run
+      fi
+      ;;
+  esac
+done
+
+# Always required, regardless of which paths changed.
+add_cmd "resolves project references correctly, unlike a raw tsc - trilium/CLAUDE.md Test section" \
+  pnpm typecheck
+add_cmd "flags trailing whitespace / unresolved conflict markers since $DIFF_CHECK_REF before committing (mitn contrib-preflight requirement, not upstream-sourced)" \
+  git diff --check "$DIFF_CHECK_REF"
+
+# --- print or run ----------------------------------------------------------
+
+if [[ "$RUN" == 0 ]]; then
+  for ((i = 0; i < CMD_COUNT; i++)); do
+    declare -n cmd_arr="CMD_$i"
+    printf -v rendered '%q ' "${cmd_arr[@]}"
+    printf '%s\t# %s\n' "${rendered% }" "${REASONS[$i]}"
+  done
+  exit 0
+fi
+
+failed=0
+for ((i = 0; i < CMD_COUNT; i++)); do
+  declare -n cmd_arr="CMD_$i"
+  reason="${REASONS[$i]}"
+  printf -v rendered '%q ' "${cmd_arr[@]}"
+  rendered="${rendered% }"
+  echo "==> $rendered"
+  echo "    # $reason"
+  set +e
+  ( cd "$TRILIUM_ROOT" && "${cmd_arr[@]}" )
+  status=$?
+  set -e
+  if [[ "$status" == 0 ]]; then
+    echo "PASS: $rendered"
+  else
+    echo "FAIL ($status): $rendered" >&2
+    failed=1
+  fi
+  echo
+done
+
+exit "$failed"

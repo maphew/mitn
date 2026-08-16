@@ -1,0 +1,264 @@
+#!/usr/bin/env bash
+# triage-report - emit the standard evidence record for upstream Trilium triage.
+#
+# Writes a Markdown file with the ten fields a maintainer needs to act on a
+# bug report, each as its own section: build, environment, reproduces,
+# clean profile/database, minimal steps, expected, actual, scope, regression,
+# artifact. Fields not supplied on the command line and not cheaply
+# auto-captured are left as a placeholder plus an HTML comment explaining
+# what belongs there - HTML comments are invisible on GitHub and excluded
+# from scripts/gh-body-lint word counts, so fill-in guidance lives there
+# rather than in the posted text. Review and complete the placeholders
+# before posting; this script only saves the boilerplate.
+#
+# Usage:
+#   triage-report -o <out.md> [--issue N] [--title T] [--build V]
+#                  [--field key=value ...] [--trilium-root PATH] [--force]
+#
+#   -o, --output PATH     Required. Where to write the Markdown report.
+#                          Refuses to overwrite an existing file unless
+#                          --force is also given.
+#   --issue N             Upstream issue number this report is evidence for.
+#                          Must be numeric. Rendered as TriliumNext/Trilium#N
+#                          (autolinks).
+#   --title T             Short human title for the report header.
+#   --build V             Trilium version/commit under test. Overrides the
+#                          auto-detected commit from --trilium-root.
+#   --field key=value     Pre-fill one field. Repeatable. Valid keys:
+#                          build environment reproduces clean-profile steps
+#                          expected actual scope regression artifact
+#   --trilium-root PATH   Path to the Trilium source checkout used to
+#                          auto-detect --build. Must be an existing
+#                          directory; the script dies if it is not. Defaults
+#                          to resolving "../trilium" relative to this mitn
+#                          checkout, the way AGENTS.md documents. That
+#                          default resolution is best effort and silently
+#                          skipped if it fails.
+#   --force                Allow -o/--output to overwrite an existing file.
+#   -h, --help             Show this help and exit.
+#
+# Field meanings (each becomes its own "## Section" in the output):
+#   build             Trilium version or commit the bug was observed on.
+#   environment       OS, Node version, browser/client, sync setup.
+#   reproduces        yes / no / intermittent - can the bug be reproduced,
+#                     and how reliably.
+#   clean-profile     Was this tested against a clean profile/database (no
+#                     custom scripts, themes, or sync)? Rules out
+#                     environment-specific configuration as the cause.
+#   steps             Minimal, numbered steps to reproduce from a clean
+#                     state.
+#   expected          What should happen.
+#   actual            What actually happens.
+#   scope             Who/what is affected: all users, one platform, one
+#                     note type, a specific import/export path, etc.
+#   regression        Is this a regression, and if so against which
+#                     last-known-good version.
+#   artifact          Link or path to a screenshot, log, or repro script
+#                     that backs up the report.
+#
+# Auto-capture: environment always fills in OS (uname -srm) and, if present,
+# the Node.js version; build fills in from "git describe" (falling back to a
+# short rev-parse) in the resolved Trilium root, if any. Explicit --build /
+# --field values always win over auto-capture. The auto-detected build value
+# never includes the local checkout's absolute path (that would leak a
+# private filesystem path into a file meant for upstream posting); an HTML
+# comment records only that the value was auto-detected.
+#
+# After writing the report, this script runs scripts/gh-body-lint on it and
+# prints any complaint to stderr as a warning; it does not fail the run or
+# delete the output file, so formatting problems surface at generation time
+# without blocking a draft you plan to edit further.
+#
+# Example:
+#   scripts/triage-report -o /tmp/10668.md --issue 10668 \
+#     --title "Mermaid diagram resize crashes note view" \
+#     --field reproduces=yes --field clean-profile="yes, fresh profile"
+
+set -euo pipefail
+
+die() { printf '%s: %s\n' "${0##*/}" "$*" >&2; exit 1; }
+
+usage() {
+  awk '
+    NR==1 {next}
+    /^set -euo pipefail/ {exit}
+    { sub(/^# ?/, ""); print }
+  ' "$0"
+}
+
+FIELD_KEYS=(build environment reproduces clean-profile steps expected actual scope regression artifact)
+
+FIELD_LABEL_build="Build"
+FIELD_LABEL_environment="Environment"
+FIELD_LABEL_reproduces="Reproduces"
+FIELD_LABEL_clean_profile="Clean profile/database"
+FIELD_LABEL_steps="Minimal steps"
+FIELD_LABEL_expected="Expected"
+FIELD_LABEL_actual="Actual"
+FIELD_LABEL_scope="Scope"
+FIELD_LABEL_regression="Regression"
+FIELD_LABEL_artifact="Artifact"
+
+FIELD_GUIDANCE_build="Trilium version or commit this was tested on (e.g. v0.63.7 or a commit sha). Auto-filled from the sibling Trilium checkout when resolvable."
+FIELD_GUIDANCE_environment="OS, Node version, browser/client, and sync setup. OS and Node are auto-filled where detectable; add browser/client and sync details by hand."
+FIELD_GUIDANCE_reproduces="State yes, no, or intermittent, and how reliably (e.g. \"yes, every time\" or \"intermittent, ~1 in 5\")."
+FIELD_GUIDANCE_clean_profile="Was this tested against a clean profile/database with no custom scripts, themes, or sync configured? This rules out local configuration as the cause."
+FIELD_GUIDANCE_steps="Minimal, numbered steps to reproduce starting from a clean state. Strip anything not required to trigger the bug."
+FIELD_GUIDANCE_expected="What should happen when following the steps above."
+FIELD_GUIDANCE_actual="What actually happens instead, including exact error text if any."
+FIELD_GUIDANCE_scope="Who or what is affected: all users, one platform (desktop/web/mobile), one note type, one import/export path, etc."
+FIELD_GUIDANCE_regression="Is this a regression? If yes, name the last-known-good version or commit; if unknown, say so explicitly rather than leaving it blank."
+FIELD_GUIDANCE_artifact="Link or path to a screenshot, log, or repro script backing up this report."
+
+field_var_name() {
+  local key="$1"
+  printf '%s\n' "FIELD_LABEL_${key//-/_}"
+}
+
+# key -> value storage using indexed lookups (avoids relying on bash 4
+# associative arrays that some minimal environments still lack).
+declare -a FIELD_VALUES
+for i in "${!FIELD_KEYS[@]}"; do FIELD_VALUES[$i]=""; done
+
+field_index() {
+  local key="$1" i
+  for i in "${!FIELD_KEYS[@]}"; do
+    [[ "${FIELD_KEYS[$i]}" == "$key" ]] && { echo "$i"; return 0; }
+  done
+  return 1
+}
+
+set_field() {
+  local key="$1" value="$2" i
+  i="$(field_index "$key")" || die "unknown --field key: $key (valid: ${FIELD_KEYS[*]})"
+  FIELD_VALUES[$i]="$value"
+}
+
+get_field() {
+  local key="$1" i
+  i="$(field_index "$key")" || die "unknown field key: $key"
+  printf '%s\n' "${FIELD_VALUES[$i]}"
+}
+
+OUT=""
+ISSUE=""
+TITLE=""
+TRILIUM_ROOT_OVERRIDE=""
+FORCE=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -o|--output) [[ $# -ge 2 ]] || die "$1 needs a value"; OUT="$2"; shift 2;;
+    --output=*) OUT="${1#--output=}"; shift;;
+    --issue) [[ $# -ge 2 ]] || die "--issue needs a value"; ISSUE="$2"; shift 2;;
+    --issue=*) ISSUE="${1#--issue=}"; shift;;
+    --title) [[ $# -ge 2 ]] || die "--title needs a value"; TITLE="$2"; shift 2;;
+    --title=*) TITLE="${1#--title=}"; shift;;
+    --build) [[ $# -ge 2 ]] || die "--build needs a value"; set_field build "$2"; shift 2;;
+    --build=*) set_field build "${1#--build=}"; shift;;
+    --field)
+      [[ $# -ge 2 ]] || die "--field needs a key=value argument"
+      [[ "$2" == *=* ]] || die "--field expects key=value, got: $2"
+      set_field "${2%%=*}" "${2#*=}"
+      shift 2
+      ;;
+    --field=*)
+      arg="${1#--field=}"
+      [[ "$arg" == *=* ]] || die "--field expects key=value, got: $arg"
+      set_field "${arg%%=*}" "${arg#*=}"
+      shift
+      ;;
+    --trilium-root) [[ $# -ge 2 ]] || die "--trilium-root needs a value"; TRILIUM_ROOT_OVERRIDE="$2"; shift 2;;
+    --trilium-root=*) TRILIUM_ROOT_OVERRIDE="${1#--trilium-root=}"; shift;;
+    --force) FORCE=1; shift;;
+    -h|--help) usage; exit 0;;
+    -*) die "unknown flag: $1 (see --help)";;
+    *) die "unexpected argument: $1 (see --help)";;
+  esac
+done
+
+[[ -n "$OUT" ]] || die "usage: triage-report -o <out.md> [--issue N] [--title T] [--build V] [--field key=value ...] (see --help)"
+[[ -z "$ISSUE" || "$ISSUE" =~ ^[0-9]+$ ]] || die "--issue must be numeric (got '$ISSUE')"
+[[ "$FORCE" -eq 1 || ! -e "$OUT" ]] || die "refusing to overwrite existing file: $OUT (use --force to overwrite)"
+
+# --- resolve the Trilium checkout for build auto-detection ---------------
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TRILIUM_ROOT=""
+if [[ -n "$TRILIUM_ROOT_OVERRIDE" ]]; then
+  [[ -d "$TRILIUM_ROOT_OVERRIDE" ]] || die "--trilium-root path does not exist or is not a directory: $TRILIUM_ROOT_OVERRIDE"
+  TRILIUM_ROOT="$TRILIUM_ROOT_OVERRIDE"
+else
+  if common_git_dir="$(git -C "$SCRIPT_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"; then
+    mitn_root="$(dirname "$common_git_dir")"
+    candidate="$mitn_root/../trilium"
+    [[ -d "$candidate" ]] && TRILIUM_ROOT="$candidate"
+  fi
+fi
+
+# --- auto-capture: build ---------------------------------------------------
+if [[ -z "$(get_field build)" && -n "$TRILIUM_ROOT" ]]; then
+  if git -C "$TRILIUM_ROOT" rev-parse --git-dir >/dev/null 2>&1; then
+    auto_build="$(git -C "$TRILIUM_ROOT" describe --tags --always --dirty 2>/dev/null || true)"
+    [[ -z "$auto_build" ]] && auto_build="$(git -C "$TRILIUM_ROOT" rev-parse --short HEAD 2>/dev/null || true)"
+    [[ -n "$auto_build" ]] && set_field build "$auto_build
+<!-- auto-detected from local Trilium checkout -->"
+  fi
+fi
+
+# --- auto-capture: environment ---------------------------------------------
+if [[ -z "$(get_field environment)" ]]; then
+  uname_out="$(uname -srm 2>/dev/null || true)"
+  os_line="OS: ${uname_out:-unknown}"
+  if command -v node >/dev/null 2>&1; then
+    node_version="$(node --version 2>/dev/null || true)"
+    node_line="Node: ${node_version:-not detected on this machine}"
+  else
+    node_line="Node: not detected on this machine"
+  fi
+  set_field environment "$os_line
+$node_line
+<!-- add browser/client and sync setup by hand -->"
+fi
+
+# --- render ------------------------------------------------------------
+report_title="${TITLE:-Untitled triage report}"
+
+{
+  echo "# Triage report: $report_title"
+  echo
+  echo "<!-- Generated by scripts/triage-report. Review every placeholder"
+  echo "     below before posting upstream; auto-captured values are"
+  echo "     defaults, not verified facts. -->"
+  echo
+  if [[ -n "$ISSUE" ]]; then
+    echo "Issue: TriliumNext/Trilium#$ISSUE"
+  else
+    echo "Issue: (not yet linked to an upstream issue number)"
+  fi
+  echo
+
+  for key in "${FIELD_KEYS[@]}"; do
+    label_var="$(field_var_name "$key")"
+    label="${!label_var}"
+    value="$(get_field "$key")"
+    echo "## $label"
+    echo
+    if [[ -n "$value" ]]; then
+      printf '%s\n' "$value"
+    else
+      guidance_var="FIELD_GUIDANCE_${key//-/_}"
+      echo "_TODO: fill in._"
+      echo
+      echo "<!-- ${!guidance_var} -->"
+    fi
+    echo
+  done
+} > "$OUT"
+
+echo "triage-report: wrote $OUT"
+
+if [[ -x "$SCRIPT_DIR/gh-body-lint" ]]; then
+  if ! lint_output="$("$SCRIPT_DIR/gh-body-lint" "$OUT" 2>&1)"; then
+    printf '%s: gh-body-lint flagged issues in %s:\n%s\n' "${0##*/}" "$OUT" "$lint_output" >&2
+  fi
+fi

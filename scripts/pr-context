@@ -1,0 +1,477 @@
+#!/usr/bin/env bash
+# pr-context - report the collision/context picture for a branch, PR, or
+# issue before editing in the trilium checkout.
+#
+# Branch collision is a real cost center upstream (44 of 57 open PRs had
+# merge conflicts on 2026-08-15). This script never fetches, checks out, or
+# otherwise changes state anywhere - it only reads.
+
+set -euo pipefail
+
+die() { echo "${0##*/}: $*" >&2; exit 1; }
+warn() { echo "${0##*/}: warning: $*" >&2; }
+section() { printf '\n== %s ==\n' "$1"; }
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  scripts/pr-context (--pr N | --issue N | --branch NAME)
+                      [--repo owner/name] [--trilium-root PATH]
+
+Reports, read-only, the context an agent needs before editing in the
+trilium checkout:
+
+  1. Target        - title, state, author, base, mergeable status.
+  2. Linked issue/discussion - closing-issue refs and issue/discussion
+                      links found in the body (or commits, for a branch).
+  3. Overlapping open PRs - other OPEN upstream PRs touching the same
+                      subsystems (top-level app/package dirs plus
+                      second-level src dirs).
+  4. Relevant local guidance - matching trilium/CLAUDE.md headings and
+                      .claude/skills/ entries.
+  5. Divergence     - ahead/behind vs upstream/main (branch), or
+                      mergeable state (PR).
+
+Options:
+  --pr N             Report on upstream pull request N.
+  --issue N          Report on upstream issue N.
+  --branch NAME      Report on local branch NAME in the trilium checkout.
+  --repo owner/name  Upstream repo to query (default: TriliumNext/Trilium).
+  --trilium-root P   Path to the trilium checkout. Default: resolved from
+                      this script's own repo (mitn) as the sibling
+                      ../trilium directory, the way AGENTS.md does.
+  -h, --help         Show this help.
+
+Strictly read-only: runs no git fetch/checkout/stash and no gh mutation
+commands. Degrades gracefully (warns, continues) if gh is unauthenticated
+or an individual section's lookup fails.
+USAGE
+}
+
+REPO="TriliumNext/Trilium"
+TRILIUM_ROOT=""
+MODE=""
+TARGET=""
+
+set_mode() {
+  [[ -z "$MODE" ]] || die "only one of --pr/--issue/--branch may be given"
+  MODE="$1"
+  TARGET="$2"
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --pr) [[ $# -ge 2 ]] || die "--pr needs a value"; set_mode "pr" "$2"; shift 2;;
+    --issue) [[ $# -ge 2 ]] || die "--issue needs a value"; set_mode "issue" "$2"; shift 2;;
+    --branch) [[ $# -ge 2 ]] || die "--branch needs a value"; set_mode "branch" "$2"; shift 2;;
+    --repo) [[ $# -ge 2 ]] || die "--repo needs a value"; REPO="$2"; shift 2;;
+    --trilium-root) [[ $# -ge 2 ]] || die "--trilium-root needs a value"; TRILIUM_ROOT="$2"; shift 2;;
+    -h|--help) usage; exit 0;;
+    -*) die "unknown flag: $1 (see --help)";;
+    *) die "unexpected argument: $1 (use --pr/--issue/--branch, see --help)";;
+  esac
+done
+
+[[ -n "$MODE" ]] || { usage >&2; die "one of --pr, --issue, --branch is required"; }
+[[ "$TARGET" =~ ^[0-9]+$ || "$MODE" == "branch" ]] || die "--$MODE expects a number, got '$TARGET'"
+
+command -v gh >/dev/null 2>&1 || die "gh CLI not found on PATH"
+command -v jq >/dev/null 2>&1 || die "jq not found on PATH"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Only branch mode and section 4 (local guidance) need a working trilium
+# checkout; --pr and --issue modes must still run without one.
+if [[ -z "$TRILIUM_ROOT" ]]; then
+  mitn_common_dir="$(git -C "$SCRIPT_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" \
+    || die "could not resolve mitn git-common-dir from $SCRIPT_DIR (use --trilium-root to skip this)"
+  mitn_root="$(dirname "$mitn_common_dir")"
+  trilium_root_candidate="$mitn_root/../trilium"
+else
+  trilium_root_candidate="$TRILIUM_ROOT"
+fi
+
+TRILIUM_ROOT_OK=1
+trilium_root_resolved="$(git -C "$trilium_root_candidate" rev-parse --show-toplevel 2>/dev/null)" || trilium_root_resolved=""
+if [[ -n "$trilium_root_resolved" ]]; then
+  TRILIUM_ROOT="$trilium_root_resolved"
+elif [[ "$MODE" == "branch" ]]; then
+  die "trilium root not found: $trilium_root_candidate (use --trilium-root)"
+else
+  TRILIUM_ROOT_OK=0
+  TRILIUM_ROOT="$trilium_root_candidate"
+  warn "trilium checkout not found at $trilium_root_candidate (use --trilium-root); section 4 will be skipped"
+fi
+
+GH_OK=1
+if ! gh auth status >/dev/null 2>&1; then
+  warn "gh is not authenticated; PR/issue lookups will be skipped throughout"
+  GH_OK=0
+fi
+
+TMP_DIR="$(mktemp -d)"
+trap 'rm -rf "$TMP_DIR"' EXIT
+
+# run_gh <description> <gh-command...>
+# Prints stdout only (stderr is captured separately so a stray warning line
+# on stdout never corrupts downstream JSON parsing). On failure, warns with
+# description and stderr tail, prints nothing, and returns 1 - callers must
+# not let this kill the script (use it inside `x="$(run_gh ...)" || x=""`).
+# Any stderr output is surfaced as a warning even on success.
+run_gh() {
+  local desc="$1"; shift
+  local out rc errfile
+  errfile="$(mktemp -p "$TMP_DIR" run_gh_err.XXXXXX)"
+  if out="$("$@" 2>"$errfile")"; then
+    rc=0
+  else
+    rc=1
+  fi
+  if [[ -s "$errfile" ]]; then
+    warn "$desc stderr: $(tr '\n' ' ' < "$errfile" | cut -c1-200)"
+  fi
+  rm -f "$errfile"
+  if [[ "$rc" -eq 0 ]]; then
+    printf '%s\n' "$out"
+    return 0
+  else
+    warn "$desc failed"
+    return 1
+  fi
+}
+
+# jq_safe <description> <jq-args...>
+# Runs jq with `set -e` disabled around the call so a parse failure (e.g.
+# malformed/empty JSON that slipped past run_gh) prints a section warning
+# and returns 1 instead of killing the whole script.
+jq_safe() {
+  local desc="$1"; shift
+  local out rc
+  set +e
+  out="$(jq "$@")"
+  rc=$?
+  set -e
+  if [[ "$rc" -ne 0 ]]; then
+    warn "$desc: jq parse failed, skipping"
+    return 1
+  fi
+  printf '%s\n' "$out"
+  return 0
+}
+
+# subsystems_of: read newline-delimited file paths on stdin, print
+# newline-delimited touched subsystems - top-level dirs like apps/server,
+# packages/<x>, plus the second-level dir under src/ (e.g. apps/server/src/services).
+subsystems_of() {
+  awk -F/ '
+    {
+      if ($1 == "apps" || $1 == "packages") {
+        top = $1 "/" $2
+        print top
+        if ($3 == "src" && $4 != "" && NF > 4) print top "/src/" $4
+      } else if ($1 != "") {
+        print $1
+      }
+    }
+  ' | sort -u
+}
+
+# keywords_of: read newline-delimited subsystem dirs on stdin, print
+# lowercase alnum tokens (>=3 chars, generic path words dropped) for
+# matching against CLAUDE.md headings and skill directory names.
+keywords_of() {
+  tr '/-' '\n\n' \
+    | tr '[:upper:]' '[:lower:]' \
+    | grep -Ev '^(apps|packages|src)$' \
+    | awk 'length($0) >= 3' \
+    | sort -u
+}
+
+TARGET_FILES_FILE="$TMP_DIR/target_files"
+TARGET_SUBSYS_FILE="$TMP_DIR/target_subsystems"
+: > "$TARGET_FILES_FILE"
+: > "$TARGET_SUBSYS_FILE"
+
+# ---------------------------------------------------------------------------
+# 1. Target
+# ---------------------------------------------------------------------------
+section "1. Target: $MODE $TARGET"
+
+PR_JSON=""
+ISSUE_JSON=""
+
+if [[ "$MODE" == "pr" ]]; then
+  if [[ "$GH_OK" == 1 ]]; then
+    PR_JSON="$(run_gh "gh pr view $TARGET" gh pr view "$TARGET" --repo "$REPO" \
+      --json number,title,state,author,baseRefName,headRefName,headRepositoryOwner,mergeable,mergeStateStatus,body,closingIssuesReferences,files,url)" || PR_JSON=""
+  fi
+  if [[ -n "$PR_JSON" ]]; then
+    jq_safe "PR summary" -r '
+      "Title:      " + .title,
+      "State:      " + .state,
+      "Author:     " + (.author.login // "unknown"),
+      "Base:       " + .baseRefName,
+      "Head:       " + ((.headRepositoryOwner.login // "?") + ":" + .headRefName),
+      "Mergeable:  " + .mergeable + " (" + .mergeStateStatus + ")",
+      "URL:        " + .url
+    ' <<<"$PR_JSON" || true
+    jq_safe "PR file list" -r '.files[].path' <<<"$PR_JSON" > "$TARGET_FILES_FILE" || true
+  else
+    warn "no PR data for $REPO#$TARGET"
+  fi
+
+elif [[ "$MODE" == "issue" ]]; then
+  if [[ "$GH_OK" == 1 ]]; then
+    ISSUE_JSON="$(run_gh "gh issue view $TARGET" gh issue view "$TARGET" --repo "$REPO" \
+      --json number,title,state,author,body,url)" || ISSUE_JSON=""
+  fi
+  if [[ -n "$ISSUE_JSON" ]]; then
+    jq_safe "issue summary" -r '
+      "Title:      " + .title,
+      "State:      " + .state,
+      "Author:     " + (.author.login // "unknown"),
+      "URL:        " + .url
+    ' <<<"$ISSUE_JSON" || true
+  else
+    warn "no issue data for $REPO#$TARGET"
+  fi
+  echo "(issues carry no file diff, so section 3 does not apply; section 4 has no touched subsystems to match)"
+
+else # branch
+  if ! git -C "$TRILIUM_ROOT" show-ref --verify --quiet "refs/heads/$TARGET"; then
+    die "local branch not found in $TRILIUM_ROOT: $TARGET"
+  fi
+  BASE_REF=""
+  for candidate in upstream/main origin/main main; do
+    if git -C "$TRILIUM_ROOT" rev-parse --verify --quiet "$candidate" >/dev/null; then
+      BASE_REF="$candidate"
+      break
+    fi
+  done
+  [[ -n "$BASE_REF" ]] || warn "no upstream/main, origin/main, or main ref found locally; skipping diff-based sections"
+
+  tracking="$(git -C "$TRILIUM_ROOT" for-each-ref --format='%(upstream:short)' "refs/heads/$TARGET")"
+  last_commit="$(git -C "$TRILIUM_ROOT" log -1 --format='%h %ad %s' --date=short "$TARGET")"
+  echo "Branch:     $TARGET"
+  echo "Tracking:   ${tracking:-none}"
+  echo "Base ref:   ${BASE_REF:-unresolved}"
+  echo "Last commit: $last_commit"
+
+  if [[ -n "$BASE_REF" ]]; then
+    merge_base="$(git -C "$TRILIUM_ROOT" merge-base "$BASE_REF" "$TARGET" 2>/dev/null || true)"
+    if [[ -n "$merge_base" ]]; then
+      git -C "$TRILIUM_ROOT" diff --name-only "$merge_base" "$TARGET" > "$TARGET_FILES_FILE"
+    else
+      warn "could not compute merge-base of $BASE_REF and $TARGET"
+    fi
+  fi
+fi
+
+sort -u "$TARGET_FILES_FILE" -o "$TARGET_FILES_FILE"
+subsystems_of < "$TARGET_FILES_FILE" > "$TARGET_SUBSYS_FILE"
+
+# ---------------------------------------------------------------------------
+# 2. Linked issue/discussion
+# ---------------------------------------------------------------------------
+section "2. Linked issue/discussion"
+
+link_pattern='https://github\.com/[^/[:space:])]+/[^/[:space:])]+/(issues|discussions)/[0-9]+'
+
+if [[ "$MODE" == "pr" && -n "$PR_JSON" ]]; then
+  closing_count="$(jq_safe "closing issue count" '.closingIssuesReferences | length' <<<"$PR_JSON")" || closing_count=""
+  if [[ -n "$closing_count" && "$closing_count" -gt 0 ]]; then
+    echo "Closing issue references:"
+    jq_safe "closing issue list" -r '.closingIssuesReferences[] | "  - #" + (.number|tostring) + " " + .title' <<<"$PR_JSON" || true
+  else
+    echo "Closing issue references: none"
+  fi
+  body_links="$(jq_safe "PR body" -r '.body // ""' <<<"$PR_JSON" | grep -Eo "$link_pattern" | sort -u || true)"
+  if [[ -n "$body_links" ]]; then
+    echo "Issue/discussion links found in body:"
+    sed 's/^/  - /' <<<"$body_links"
+  else
+    echo "Issue/discussion links found in body: none"
+  fi
+
+elif [[ "$MODE" == "issue" ]]; then
+  if [[ "$GH_OK" == 1 ]]; then
+    referencing_prs="$(run_gh "gh pr list --search $TARGET in:body" gh pr list --repo "$REPO" --state open \
+      --search "$TARGET in:body" --json number,title,url)" || referencing_prs="[]"
+  else
+    referencing_prs="[]"
+  fi
+  ref_count="$(jq_safe "referencing PR count" 'length' <<<"$referencing_prs")" || ref_count=""
+  if [[ -n "$ref_count" && "$ref_count" -gt 0 ]]; then
+    echo "Open PRs referencing this issue:"
+    jq_safe "referencing PR list" -r '.[] | "  - #" + (.number|tostring) + " " + .title + " (" + .url + ")"' <<<"$referencing_prs" || true
+  else
+    echo "Open PRs referencing this issue: none found"
+  fi
+
+else # branch
+  if [[ "$GH_OK" == 1 ]]; then
+    existing_pr="$(run_gh "gh pr list --search head:$TARGET" gh pr list --repo "$REPO" --state all \
+      --search "head:$TARGET" --json number,title,state,url --limit 5)" || existing_pr="[]"
+  else
+    existing_pr="[]"
+  fi
+  existing_pr_count="$(jq_safe "existing PR count" 'length' <<<"$existing_pr")" || existing_pr_count=""
+  if [[ -n "$existing_pr_count" && "$existing_pr_count" -gt 0 ]]; then
+    echo "Existing PR(s) with this head branch name:"
+    jq_safe "existing PR list" -r '.[] | "  - #" + (.number|tostring) + " [" + .state + "] " + .title + " (" + .url + ")"' <<<"$existing_pr" || true
+  else
+    echo "Existing PR(s) with this head branch name: none found"
+  fi
+  if [[ -n "${merge_base:-}" ]]; then
+    commit_links="$(git -C "$TRILIUM_ROOT" log --format='%B' "$merge_base..$TARGET" \
+      | grep -Eo "$link_pattern|#[0-9]+" | sort -u || true)"
+    if [[ -n "$commit_links" ]]; then
+      echo "Issue/discussion refs found in commit messages:"
+      sed 's/^/  - /' <<<"$commit_links"
+    else
+      echo "Issue/discussion refs found in commit messages: none"
+    fi
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# 3. Overlapping open PRs
+# ---------------------------------------------------------------------------
+section "3. Overlapping open PRs (upstream $REPO, open PRs capped at --limit 100)"
+
+# Generic top-level buckets that show up on almost every PR; a subsystem
+# overlap made up only of these is low signal (see below).
+GENERIC_SUBSYS_PATTERN='^(docs|\.github)$'
+
+if [[ "$MODE" == "issue" ]]; then
+  echo "(not applicable - issues carry no file diff to compare)"
+elif [[ ! -s "$TARGET_SUBSYS_FILE" ]]; then
+  warn "no changed files resolved for this target; skipping overlap check"
+else
+  echo "Touched subsystems:"
+  sed 's/^/  - /' "$TARGET_SUBSYS_FILE"
+  echo
+
+  if [[ "$GH_OK" == 0 ]]; then
+    warn "gh unauthenticated; skipping open-PR overlap lookup"
+  else
+    open_prs="$(run_gh "gh pr list --state open" gh pr list --repo "$REPO" --state open \
+      --json number,title,files --limit 100)" || open_prs="[]"
+    open_count="$(jq_safe "open PR count" 'length' <<<"$open_prs")" || open_count=0
+    echo "Checked ${open_count:-0} open PRs."
+    found_any=0
+    while IFS=$'\t' read -r num title; do
+      [[ -z "$num" ]] && continue
+      [[ "$MODE" == "pr" && "$num" == "$TARGET" ]] && continue
+      other_files_file="$TMP_DIR/other_${num}_files"
+      jq_safe "PR #$num files" -r --arg n "$num" '.[] | select((.number|tostring) == $n) | .files[].path' \
+        <<<"$open_prs" | sort -u > "$other_files_file" || true
+      other_subsys_file="$TMP_DIR/other_${num}_subsys"
+      subsystems_of < "$other_files_file" > "$other_subsys_file"
+
+      same_file_overlap="$(comm -12 "$TARGET_FILES_FILE" "$other_files_file")"
+      subsys_overlap="$(comm -12 "$TARGET_SUBSYS_FILE" "$other_subsys_file")"
+
+      if [[ -n "$same_file_overlap" || -n "$subsys_overlap" ]]; then
+        found_any=1
+        echo "  PR #$num: $title"
+        if [[ -n "$same_file_overlap" ]]; then
+          while IFS= read -r f; do
+            echo "      same file: $f"
+          done <<<"$same_file_overlap"
+        fi
+        if [[ -n "$subsys_overlap" ]]; then
+          generic_only=1
+          while IFS= read -r ov; do
+            echo "      overlaps: $ov"
+            [[ "$ov" =~ $GENERIC_SUBSYS_PATTERN ]] || generic_only=0
+          done <<<"$subsys_overlap"
+          if [[ "$generic_only" == 1 ]]; then
+            echo "      (subsystem overlap above is only generic buckets - low signal)"
+          fi
+        fi
+      fi
+    done < <(jq_safe "open PR list" -r '.[] | [(.number|tostring), .title] | @tsv' <<<"$open_prs" || true)
+    [[ "$found_any" == 1 ]] || echo "  (no overlapping open PRs found)"
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# 4. Relevant local guidance
+# ---------------------------------------------------------------------------
+section "4. Relevant local guidance (trilium/CLAUDE.md, .claude/skills/)"
+
+CLAUDE_MD="$TRILIUM_ROOT/CLAUDE.md"
+SKILLS_DIR="$TRILIUM_ROOT/.claude/skills"
+
+if [[ "$TRILIUM_ROOT_OK" == 0 ]]; then
+  echo "(skipped - no trilium checkout resolved)"
+elif [[ "$MODE" == "issue" || ! -s "$TARGET_SUBSYS_FILE" ]]; then
+  echo "(not applicable - no touched subsystems resolved)"
+else
+  keywords="$(keywords_of < "$TARGET_SUBSYS_FILE")"
+  if [[ -z "$keywords" ]]; then
+    echo "(no matchable keywords derived from touched subsystems)"
+  else
+    if [[ -f "$CLAUDE_MD" ]]; then
+      echo "Matching CLAUDE.md headings:"
+      any_heading=0
+      heading_lines="$(grep -E '^#+' "$CLAUDE_MD" || true)"
+      while IFS= read -r kw; do
+        [[ -z "$kw" || -z "$heading_lines" ]] && continue
+        matches="$(grep -inF -- "$kw" <<<"$heading_lines" || true)"
+        if [[ -n "$matches" ]]; then
+          any_heading=1
+          while IFS= read -r m; do
+            echo "  - [$kw] ${m#*:}"
+          done <<<"$matches"
+        fi
+      done <<<"$keywords"
+      [[ "$any_heading" == 1 ]] || echo "  (no heading matched)"
+    else
+      warn "CLAUDE.md not found at $CLAUDE_MD"
+    fi
+
+    echo "Matching .claude/skills/ entries:"
+    if [[ -d "$SKILLS_DIR" ]]; then
+      any_skill=0
+      while IFS= read -r kw; do
+        while IFS= read -r skill; do
+          any_skill=1
+          echo "  - [$kw] $skill"
+        done < <(basename -a "$SKILLS_DIR"/*/ 2>/dev/null | grep -iF -- "$kw" || true)
+      done <<<"$keywords"
+      [[ "$any_skill" == 1 ]] || echo "  (no skill matched)"
+    else
+      warn "skills directory not found at $SKILLS_DIR"
+    fi
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# 5. Divergence
+# ---------------------------------------------------------------------------
+section "5. Divergence"
+
+if [[ "$MODE" == "pr" ]]; then
+  if [[ -n "$PR_JSON" ]]; then
+    jq_safe "PR mergeable state" -r '"Mergeable state: " + .mergeable + " (" + .mergeStateStatus + ")"' <<<"$PR_JSON" || true
+  else
+    echo "(unavailable - no PR data)"
+  fi
+elif [[ "$MODE" == "issue" ]]; then
+  echo "(not applicable - target is an issue)"
+else # branch
+  if [[ -n "${BASE_REF:-}" ]]; then
+    counts="$(git -C "$TRILIUM_ROOT" rev-list --left-right --count "$BASE_REF...$TARGET" 2>/dev/null || true)"
+    if [[ -n "$counts" ]]; then
+      behind="$(cut -f1 <<<"$counts")"
+      ahead="$(cut -f2 <<<"$counts")"
+      echo "vs $BASE_REF: $ahead ahead, $behind behind (as of last local fetch of $BASE_REF)"
+    else
+      warn "could not compute ahead/behind vs $BASE_REF"
+    fi
+  else
+    echo "(unavailable - no base ref resolved)"
+  fi
+fi
