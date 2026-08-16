@@ -1,0 +1,397 @@
+
+== 1. Target: pr 10633 ==
+Title:      Search overhaul: matching accuracy, ranking, results UI, jump to match
+State:      OPEN
+Author:     perfectra1n
+Base:       main
+Head:       TriliumNext:feat/search-overhaul
+Mergeable:  CONFLICTING (DIRTY)
+URL:        https://github.com/TriliumNext/Trilium/pull/10633
+
+== 2. Linked issue/discussion ==
+Closing issue references:
+  - #3098 
+  - #5332 
+  - #5667 
+  - #6225 
+  - #9422 
+  - #9426 
+  - #10616 
+Issue/discussion links found in body: none
+
+== 3. Overlapping open PRs (upstream TriliumNext/Trilium, open PRs capped at --limit 100) ==
+Touched subsystems:
+  - apps/client
+  - apps/client/src/components
+  - apps/client/src/entities
+  - apps/client/src/services
+  - apps/client/src/stylesheets
+  - apps/client/src/translations
+  - apps/client/src/widgets
+  - apps/server
+  - docs
+  - packages/commons
+  - packages/commons/src/lib
+  - packages/trilium-core
+  - packages/trilium-core/src/routes
+  - packages/trilium-core/src/services
+
+Checked 59 open PRs.
+  PR #11024: docs: update Evernote import doc link to new docs path
+      overlaps: docs
+      (subsystem overlap above is only generic buckets - low signal)
+  PR #10977: Spike: stable block IDs for per-block deep links
+      same file: apps/client/src/services/link.ts
+      same file: apps/client/src/translations/en/translation.json
+      same file: apps/client/src/widgets/type_widgets/text/EditableText.tsx
+      same file: apps/client/src/widgets/type_widgets/text/ReadOnlyText.tsx
+      overlaps: apps/client
+      overlaps: apps/client/src/services
+      overlaps: apps/client/src/translations
+      overlaps: apps/client/src/widgets
+  PR #10951: Spike: drawing tools on the geo map via Terra Draw, persisted as notes
+      same file: apps/client/src/translations/en/translation.json
+      overlaps: apps/client
+      overlaps: apps/client/src/translations
+      overlaps: apps/client/src/widgets
+      overlaps: packages/commons
+      overlaps: packages/commons/src/lib
+  PR #10866: Update dependency maplibre-gl to v6
+      overlaps: apps/client
+  PR #10854: docs: update Events.md to include frontend/mobile startup events
+      overlaps: docs
+      (subsystem overlap above is only generic buckets - low signal)
+  PR #10826: dev: make plugin development and test harnesses reproducible
+      overlaps: apps/client
+      overlaps: apps/client/src/widgets
+      overlaps: apps/server
+  PR #10825: fix(build): preserve native SQLite artifacts for Docker architectures
+      overlaps: apps/server
+  PR #10824: feat(plugins): add plugin manager settings and operation locking
+      same file: apps/client/src/translations/en/translation.json
+      overlaps: apps/client
+      overlaps: apps/client/src/services
+      overlaps: apps/client/src/translations
+      overlaps: apps/client/src/widgets
+      overlaps: apps/server
+      overlaps: packages/trilium-core
+      overlaps: packages/trilium-core/src/services
+  PR #10797: feat(attributes): select, copy and paste attributes in the sidebar panel
+      same file: apps/client/src/translations/en/translation.json
+      overlaps: apps/client
+      overlaps: apps/client/src/services
+      overlaps: apps/client/src/translations
+      overlaps: apps/client/src/widgets
+  PR #10647: feat(core): virtual note providers; make in-app help a virtual subtree
+      same file: apps/client/src/translations/en/translation.json
+      overlaps: apps/client
+      overlaps: apps/client/src/services
+      overlaps: apps/client/src/translations
+      overlaps: apps/client/src/widgets
+      overlaps: apps/server
+  PR #10554: perf(llm): keep agent subprocesses alive across chat turns
+      overlaps: apps/server
+  PR #10553: feat(llm): add semantic note search via local Ollama embeddings
+      same file: apps/client/src/translations/en/translation.json
+      same file: packages/commons/src/lib/options_interface.ts
+      same file: packages/trilium-core/src/routes/api/options.ts
+      same file: packages/trilium-core/src/services/options_init.ts
+      overlaps: apps/client
+      overlaps: apps/client/src/translations
+      overlaps: apps/client/src/widgets
+      overlaps: apps/server
+      overlaps: packages/commons
+      overlaps: packages/commons/src/lib
+      overlaps: packages/trilium-core
+      overlaps: packages/trilium-core/src/routes
+      overlaps: packages/trilium-core/src/services
+  PR #10499: feat(ocr): extract text from scanned PDFs via per-page OCR
+      overlaps: apps/server
+      overlaps: docs
+  PR #10371: feat(oidc): refresh the access token in-place when it expires
+      overlaps: apps/server
+      overlaps: docs
+  PR #10348: feat(users): phase 2 per-user note isolation and permissions
+      same file: packages/trilium-core/src/routes/api/search.ts
+      overlaps: apps/server
+      overlaps: packages/commons
+      overlaps: packages/commons/src/lib
+      overlaps: packages/trilium-core
+      overlaps: packages/trilium-core/src/routes
+      overlaps: packages/trilium-core/src/services
+  PR #10329: feat(client): add inverse DAG view to NotePathsTab (POC)
+      same file: apps/client/src/translations/en/translation.json
+      overlaps: apps/client
+      overlaps: apps/client/src/translations
+      overlaps: apps/client/src/widgets
+  PR #10308: feat(attr): add #openAtBottom label to open notes scrolled to the bottom
+      same file: apps/client/src/widgets/type_widgets/code/Code.tsx
+      same file: apps/client/src/widgets/type_widgets/text/EditableText.tsx
+      overlaps: apps/client
+      overlaps: apps/client/src/widgets
+      overlaps: docs
+      overlaps: packages/commons
+      overlaps: packages/commons/src/lib
+  PR #10293: Celandar hideInViews attribute to skip rendering in given views
+      same file: apps/client/src/translations/en/translation.json
+      overlaps: apps/client
+      overlaps: apps/client/src/translations
+      overlaps: apps/client/src/widgets
+      overlaps: docs
+      overlaps: packages/commons
+      overlaps: packages/commons/src/lib
+  PR #10224: feat: Adds area annotations and linkable annotations to PDFs
+      same file: apps/client/src/services/link.spec.ts
+      same file: apps/client/src/services/link.ts
+      same file: apps/client/src/translations/en/translation.json
+      overlaps: apps/client
+      overlaps: apps/client/src/components
+      overlaps: apps/client/src/services
+      overlaps: apps/client/src/translations
+      overlaps: apps/client/src/widgets
+      overlaps: docs
+  PR #10196: feat(text): add an option to auto-capitalize first letter of sentence
+      same file: apps/client/src/translations/en/translation.json
+      same file: packages/commons/src/lib/options_interface.ts
+      same file: packages/trilium-core/src/routes/api/options.ts
+      same file: packages/trilium-core/src/services/options_init.ts
+      overlaps: apps/client
+      overlaps: apps/client/src/translations
+      overlaps: apps/client/src/widgets
+      overlaps: packages/commons
+      overlaps: packages/commons/src/lib
+      overlaps: packages/trilium-core
+      overlaps: packages/trilium-core/src/routes
+      overlaps: packages/trilium-core/src/services
+  PR #10069: Feature/client test experiment
+      same file: apps/client/src/widgets/collections/Pagination.spec.tsx
+      same file: apps/client/src/widgets/react/hooks.spec.tsx
+      overlaps: apps/client
+      overlaps: apps/client/src/widgets
+  PR #10060: Support multi-attribute note sorting
+      overlaps: packages/trilium-core
+      overlaps: packages/trilium-core/src/services
+  PR #10013: Show Sync Server Host on About page
+      same file: apps/client/src/translations/en/translation.json
+      overlaps: apps/client
+      overlaps: apps/client/src/translations
+      overlaps: apps/client/src/widgets
+  PR #10009: feat(llm): allow configuring a default model per provider
+      same file: apps/client/src/translations/en/translation.json
+      overlaps: apps/client
+      overlaps: apps/client/src/translations
+      overlaps: apps/client/src/widgets
+      overlaps: apps/server
+  PR #10005: feat(search): prefix-aware fuzzy match for short tokens vs long words
+      same file: packages/trilium-core/src/services/search/utils/text_utils.spec.ts
+      same file: packages/trilium-core/src/services/search/utils/text_utils.ts
+      overlaps: packages/trilium-core
+      overlaps: packages/trilium-core/src/services
+  PR #9993: Feat #5825: Image Annotation (Draw & Write) in Trilium Notes
+      same file: apps/client/src/translations/en/translation.json
+      same file: apps/client/src/widgets/type_widgets/text/EditableText.tsx
+      overlaps: apps/client
+      overlaps: apps/client/src/services
+      overlaps: apps/client/src/translations
+      overlaps: apps/client/src/widgets
+  PR #9963: perf(search): instant quick search via FTS5 + prefix-aware fuzzy
+      same file: packages/trilium-core/src/routes/api/search.ts
+      same file: packages/trilium-core/src/services/search/expressions/note_content_fulltext.spec.ts
+      same file: packages/trilium-core/src/services/search/expressions/note_content_fulltext.ts
+      overlaps: packages/trilium-core
+      overlaps: packages/trilium-core/src/routes
+      overlaps: packages/trilium-core/src/services
+  PR #9962: feat(share): show matched content snippet in share search results
+      overlaps: apps/server
+  PR #9929: Support sharing to the app via the Web Share Target API
+      overlaps: apps/client
+      overlaps: apps/server
+  PR #9727: feat(toc): highlight active heading while scrolling
+      same file: apps/client/src/translations/en/translation.json
+      same file: packages/commons/src/lib/options_interface.ts
+      same file: packages/trilium-core/src/routes/api/options.ts
+      same file: packages/trilium-core/src/services/options_init.ts
+      overlaps: apps/client
+      overlaps: apps/client/src/translations
+      overlaps: apps/client/src/widgets
+      overlaps: packages/commons
+      overlaps: packages/commons/src/lib
+      overlaps: packages/trilium-core
+      overlaps: packages/trilium-core/src/routes
+      overlaps: packages/trilium-core/src/services
+  PR #9724: fix :Replacing the ancestor field with multi-relation support and add…
+      same file: apps/client/src/translations/en/translation.json
+      same file: apps/client/src/widgets/react/hooks.tsx
+      overlaps: apps/client
+      overlaps: apps/client/src/translations
+      overlaps: apps/client/src/widgets
+      overlaps: apps/server
+  PR #9633: Fix embedded preview styles leaking into the note tree
+      overlaps: apps/client
+      overlaps: apps/client/src/services
+  PR #9610: fix: now when user is protected and session is not active then full s…
+      overlaps: apps/client
+      overlaps: apps/client/src/widgets
+  PR #9594: fix: now user can copy image using command +C
+      same file: apps/client/src/widgets/type_widgets/text/EditableText.tsx
+      overlaps: apps/client
+      overlaps: apps/client/src/services
+      overlaps: apps/client/src/widgets
+  PR #9556: feat(llm): pluggable web search providers (Exa, Tavily, SearXNG)
+      same file: apps/client/src/translations/en/translation.json
+      same file: packages/commons/src/lib/options_interface.ts
+      overlaps: apps/client
+      overlaps: apps/client/src/translations
+      overlaps: apps/client/src/widgets
+      overlaps: apps/server
+      overlaps: packages/commons
+      overlaps: packages/commons/src/lib
+  PR #9508: fix(search): tokenize ~= and ~* as single fuzzy-match operators
+      overlaps: apps/server
+  PR #9343: feat(llm): add knowledge base mode for source-grounded conversations
+      same file: apps/client/src/services/note_autocomplete.ts
+      same file: apps/client/src/translations/en/translation.json
+      overlaps: apps/client
+      overlaps: apps/client/src/services
+      overlaps: apps/client/src/translations
+      overlaps: apps/client/src/widgets
+      overlaps: apps/server
+      overlaps: packages/commons
+      overlaps: packages/commons/src/lib
+  PR #9342: feat(llm): add configurable web search engines (Tavily, SearXNG)
+      same file: apps/client/src/translations/en/translation.json
+      same file: packages/commons/src/lib/options_interface.ts
+      same file: packages/trilium-core/src/routes/api/options.ts
+      same file: packages/trilium-core/src/services/options_init.ts
+      overlaps: apps/client
+      overlaps: apps/client/src/translations
+      overlaps: apps/client/src/widgets
+      overlaps: apps/server
+      overlaps: packages/commons
+      overlaps: packages/commons/src/lib
+      overlaps: packages/trilium-core
+      overlaps: packages/trilium-core/src/routes
+      overlaps: packages/trilium-core/src/services
+  PR #9340: feat(llm): add tool approval system for mutating operations
+      same file: apps/client/src/translations/en/translation.json
+      overlaps: apps/client
+      overlaps: apps/client/src/services
+      overlaps: apps/client/src/translations
+      overlaps: apps/client/src/widgets
+      overlaps: apps/server
+      overlaps: packages/commons
+      overlaps: packages/commons/src/lib
+  PR #9076: feat(editor): add format button to codeblock toolbar
+      same file: apps/client/src/widgets/type_widgets/text/EditableText.tsx
+      overlaps: apps/client
+      overlaps: apps/client/src/services
+      overlaps: apps/client/src/widgets
+      overlaps: docs
+  PR #8980: feat(math): Fix mathlive rendering error and add user toggle for mathlive
+      same file: apps/client/src/translations/en/translation.json
+      same file: packages/commons/src/lib/options_interface.ts
+      same file: packages/trilium-core/src/routes/api/options.ts
+      same file: packages/trilium-core/src/services/options_init.ts
+      overlaps: apps/client
+      overlaps: apps/client/src/translations
+      overlaps: apps/client/src/widgets
+      overlaps: packages/commons
+      overlaps: packages/commons/src/lib
+      overlaps: packages/trilium-core
+      overlaps: packages/trilium-core/src/routes
+      overlaps: packages/trilium-core/src/services
+  PR #8972: Migrate autocomplete
+      same file: apps/client/src/services/note_autocomplete.ts
+      same file: apps/client/src/stylesheets/style.css
+      same file: apps/client/src/widgets/dialogs/jump_to_note.tsx
+      overlaps: apps/client
+      overlaps: apps/client/src/components
+      overlaps: apps/client/src/services
+      overlaps: apps/client/src/stylesheets
+      overlaps: apps/client/src/widgets
+      overlaps: apps/server
+  PR #8920: Enforce TOTP verification during desktop sync setup
+      overlaps: apps/client
+      overlaps: apps/server
+  PR #8894: web-clipper: prevent cloning when clipping to an existing note + optimizations
+      overlaps: apps/server
+  PR #8787: feat: add childTitleTemplate attribute and update titleTemplate attri…
+      same file: apps/client/src/translations/en/translation.json
+      overlaps: apps/client
+      overlaps: apps/client/src/translations
+      overlaps: apps/client/src/widgets
+      overlaps: apps/server
+      overlaps: docs
+      overlaps: packages/commons
+      overlaps: packages/commons/src/lib
+  PR #8654: Trilium preview import
+      same file: apps/client/src/components/app_context.ts
+      same file: apps/client/src/translations/en/translation.json
+      same file: packages/commons/src/lib/server_api.ts
+      overlaps: apps/client
+      overlaps: apps/client/src/components
+      overlaps: apps/client/src/services
+      overlaps: apps/client/src/translations
+      overlaps: apps/client/src/widgets
+      overlaps: apps/server
+      overlaps: packages/commons
+      overlaps: packages/commons/src/lib
+  PR #8640: Implement relation name wildcard feature
+      same file: apps/client/src/translations/en/translation.json
+      same file: docs/User Guide/User Guide/Basic Concepts and Features/Navigation/Search.md
+      overlaps: apps/client
+      overlaps: apps/client/src/translations
+      overlaps: apps/client/src/widgets
+      overlaps: apps/server
+      overlaps: docs
+  PR #8525: fix: subtree expand only first level + depth limit
+      overlaps: apps/server
+  PR #8202: Feat: Record recently opened windows
+      same file: apps/client/src/components/app_context.ts
+      overlaps: apps/client
+      overlaps: apps/client/src/components
+      overlaps: apps/client/src/services
+      overlaps: apps/server
+  PR #7841: Auto execute saved search note
+      same file: apps/client/src/translations/en/translation.json
+      overlaps: apps/client
+      overlaps: apps/client/src/translations
+      overlaps: apps/client/src/widgets
+      overlaps: apps/server
+      overlaps: docs
+      overlaps: packages/commons
+      overlaps: packages/commons/src/lib
+  PR #7828: Fix share access to attachments for notes protected by login:password
+      overlaps: apps/server
+      overlaps: docs
+  PR #7287: feat(search): add create into inbox to search
+      same file: apps/client/src/components/app_context.ts
+      same file: apps/client/src/services/link.ts
+      same file: apps/client/src/services/note_autocomplete.ts
+      same file: apps/client/src/translations/en/translation.json
+      same file: apps/client/src/widgets/dialogs/jump_to_note.tsx
+      same file: apps/client/src/widgets/type_widgets/text/EditableText.tsx
+      overlaps: apps/client
+      overlaps: apps/client/src/components
+      overlaps: apps/client/src/services
+      overlaps: apps/client/src/translations
+      overlaps: apps/client/src/widgets
+      overlaps: packages/commons
+      overlaps: packages/commons/src/lib
+
+== 4. Relevant local guidance (trilium/CLAUDE.md, .claude/skills/) ==
+Matching CLAUDE.md headings:
+  - [client] #### Client vs Server Translation Usage
+  - [client] ### Client-Side API Restrictions
+  - [components] #### Reusable Preact Components
+  - [core] ## Core Architecture
+  - [server] #### Client vs Server Translation Usage
+  - [server] ### Writing to Notes from Server Services
+  - [server] ### Server-Side Static Assets
+  - [server] ## MCP Server
+  - [services] ### Writing to Notes from Server Services
+Matching .claude/skills/ entries:
+  - [client] profiling-client-performance
+
+== 5. Divergence ==
+Mergeable state: CONFLICTING (DIRTY)

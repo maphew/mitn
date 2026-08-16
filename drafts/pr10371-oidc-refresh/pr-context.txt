@@ -1,0 +1,135 @@
+
+== 1. Target: pr 10371 ==
+Title:      feat(oidc): refresh the access token in-place when it expires
+State:      OPEN
+Author:     perfectra1n
+Base:       main
+Head:       TriliumNext:feat/oidc-token-refresh
+Mergeable:  CONFLICTING (DIRTY)
+URL:        https://github.com/TriliumNext/Trilium/pull/10371
+
+== 2. Linked issue/discussion ==
+Closing issue references: none
+Issue/discussion links found in body: none
+
+== 3. Overlapping open PRs (upstream TriliumNext/Trilium, open PRs capped at --limit 100) ==
+Touched subsystems:
+  - apps/server
+  - apps/server/src/services
+  - docs
+
+Checked 59 open PRs.
+  PR #11024: docs: update Evernote import doc link to new docs path
+      overlaps: docs
+      (subsystem overlap above is only generic buckets - low signal)
+  PR #10854: docs: update Events.md to include frontend/mobile startup events
+      overlaps: docs
+      (subsystem overlap above is only generic buckets - low signal)
+  PR #10826: dev: make plugin development and test harnesses reproducible
+      overlaps: apps/server
+      overlaps: apps/server/src/services
+  PR #10825: fix(build): preserve native SQLite artifacts for Docker architectures
+      overlaps: apps/server
+  PR #10824: feat(plugins): add plugin manager settings and operation locking
+      overlaps: apps/server
+      overlaps: apps/server/src/services
+  PR #10647: feat(core): virtual note providers; make in-app help a virtual subtree
+      overlaps: apps/server
+  PR #10633: Search overhaul: matching accuracy, ranking, results UI, jump to match
+      overlaps: apps/server
+      overlaps: docs
+  PR #10554: perf(llm): keep agent subprocesses alive across chat turns
+      overlaps: apps/server
+      overlaps: apps/server/src/services
+  PR #10553: feat(llm): add semantic note search via local Ollama embeddings
+      overlaps: apps/server
+      overlaps: apps/server/src/services
+  PR #10499: feat(ocr): extract text from scanned PDFs via per-page OCR
+      overlaps: apps/server
+      overlaps: apps/server/src/services
+      overlaps: docs
+  PR #10348: feat(users): phase 2 per-user note isolation and permissions
+      same file: apps/server/src/services/open_id.ts
+      overlaps: apps/server
+      overlaps: apps/server/src/services
+  PR #10308: feat(attr): add #openAtBottom label to open notes scrolled to the bottom
+      overlaps: docs
+      (subsystem overlap above is only generic buckets - low signal)
+  PR #10293: Celandar hideInViews attribute to skip rendering in given views
+      overlaps: docs
+      (subsystem overlap above is only generic buckets - low signal)
+  PR #10224: feat: Adds area annotations and linkable annotations to PDFs
+      overlaps: docs
+      (subsystem overlap above is only generic buckets - low signal)
+  PR #10009: feat(llm): allow configuring a default model per provider
+      overlaps: apps/server
+      overlaps: apps/server/src/services
+  PR #9962: feat(share): show matched content snippet in share search results
+      overlaps: apps/server
+  PR #9929: Support sharing to the app via the Web Share Target API
+      same file: apps/server/src/app.ts
+      overlaps: apps/server
+  PR #9724: fix :Replacing the ancestor field with multi-relation support and add…
+      overlaps: apps/server
+      overlaps: apps/server/src/services
+  PR #9556: feat(llm): pluggable web search providers (Exa, Tavily, SearXNG)
+      overlaps: apps/server
+      overlaps: apps/server/src/services
+  PR #9508: fix(search): tokenize ~= and ~* as single fuzzy-match operators
+      overlaps: apps/server
+      overlaps: apps/server/src/services
+  PR #9343: feat(llm): add knowledge base mode for source-grounded conversations
+      overlaps: apps/server
+      overlaps: apps/server/src/services
+  PR #9342: feat(llm): add configurable web search engines (Tavily, SearXNG)
+      overlaps: apps/server
+      overlaps: apps/server/src/services
+  PR #9340: feat(llm): add tool approval system for mutating operations
+      overlaps: apps/server
+      overlaps: apps/server/src/services
+  PR #9076: feat(editor): add format button to codeblock toolbar
+      overlaps: docs
+      (subsystem overlap above is only generic buckets - low signal)
+  PR #8972: Migrate autocomplete
+      overlaps: apps/server
+      overlaps: apps/server/src/services
+  PR #8920: Enforce TOTP verification during desktop sync setup
+      overlaps: apps/server
+      overlaps: apps/server/src/services
+  PR #8894: web-clipper: prevent cloning when clipping to an existing note + optimizations
+      overlaps: apps/server
+  PR #8787: feat: add childTitleTemplate attribute and update titleTemplate attri…
+      overlaps: apps/server
+      overlaps: apps/server/src/services
+      overlaps: docs
+  PR #8654: Trilium preview import
+      overlaps: apps/server
+      overlaps: apps/server/src/services
+  PR #8640: Implement relation name wildcard feature
+      overlaps: apps/server
+      overlaps: apps/server/src/services
+      overlaps: docs
+  PR #8525: fix: subtree expand only first level + depth limit
+      overlaps: apps/server
+  PR #8202: Feat: Record recently opened windows
+      overlaps: apps/server
+      overlaps: apps/server/src/services
+  PR #7841: Auto execute saved search note
+      overlaps: apps/server
+      overlaps: docs
+  PR #7828: Fix share access to attachments for notes protected by login:password
+      overlaps: apps/server
+      overlaps: docs
+
+== 4. Relevant local guidance (trilium/CLAUDE.md, .claude/skills/) ==
+Matching CLAUDE.md headings:
+  - [server] #### Client vs Server Translation Usage
+  - [server] ### Writing to Notes from Server Services
+  - [server] ### Server-Side Static Assets
+  - [server] ## MCP Server
+  - [services] ### Writing to Notes from Server Services
+Matching .claude/skills/ entries:
+  (no skill matched)
+
+== 5. Divergence ==
+Mergeable state: CONFLICTING (DIRTY)

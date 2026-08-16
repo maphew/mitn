@@ -1,0 +1,56 @@
+# contrib-preflight for PR 10633 (search overhaul)
+
+## Emitted commands (print mode, PR worktree)
+
+pnpm --filter server exec vitest run src/services/search/services/search.spec.ts	# trilium-core spec, server (Node) runtime (same-name spec found for src/services/search/services/search.ts) - server-and-core.md 'runs under BOTH runtimes'
+pnpm --filter standalone exec vitest run src/services/search/services/search.spec.ts	# trilium-core spec, standalone (WASM) runtime (same-name spec found for src/services/search/services/search.ts) - server-and-core.md 'runs under BOTH runtimes'
+pnpm --filter server exec vitest run src/services/search/expressions/note_content_fulltext.spec.ts	# trilium-core spec, server (Node) runtime (same-name spec found for src/services/search/expressions/note_content_fulltext.ts) - server-and-core.md 'runs under BOTH runtimes'
+pnpm --filter standalone exec vitest run src/services/search/expressions/note_content_fulltext.spec.ts	# trilium-core spec, standalone (WASM) runtime (same-name spec found for src/services/search/expressions/note_content_fulltext.ts) - server-and-core.md 'runs under BOTH runtimes'
+pnpm --filter server exec vitest run src/services/search/match_quality.spec.ts	# trilium-core spec, server (Node) runtime (same-name spec found for src/services/search/match_quality.ts) - server-and-core.md 'runs under BOTH runtimes'
+pnpm --filter standalone exec vitest run src/services/search/match_quality.spec.ts	# trilium-core spec, standalone (WASM) runtime (same-name spec found for src/services/search/match_quality.ts) - server-and-core.md 'runs under BOTH runtimes'
+pnpm --filter server exec vitest run src/services/search/services/lex.spec.ts	# trilium-core spec, server (Node) runtime (same-name spec found for src/services/search/services/lex.ts) - server-and-core.md 'runs under BOTH runtimes'
+pnpm --filter standalone exec vitest run src/services/search/services/lex.spec.ts	# trilium-core spec, standalone (WASM) runtime (same-name spec found for src/services/search/services/lex.ts) - server-and-core.md 'runs under BOTH runtimes'
+pnpm --filter server exec vitest run src/services/search/services/parse.spec.ts	# trilium-core spec, server (Node) runtime (same-name spec found for src/services/search/services/parse.ts) - server-and-core.md 'runs under BOTH runtimes'
+pnpm --filter standalone exec vitest run src/services/search/services/parse.spec.ts	# trilium-core spec, standalone (WASM) runtime (same-name spec found for src/services/search/services/parse.ts) - server-and-core.md 'runs under BOTH runtimes'
+pnpm --filter server exec vitest run src/services/search/search_result.spec.ts	# trilium-core spec, server (Node) runtime (same-name spec found for src/services/search/search_result.ts) - server-and-core.md 'runs under BOTH runtimes'
+pnpm --filter standalone exec vitest run src/services/search/search_result.spec.ts	# trilium-core spec, standalone (WASM) runtime (same-name spec found for src/services/search/search_result.ts) - server-and-core.md 'runs under BOTH runtimes'
+pnpm typecheck	# resolves project references correctly, unlike a raw tsc - trilium/CLAUDE.md Test section
+git diff --check HEAD	# flags trailing whitespace / unresolved conflict markers since HEAD before committing (mitn contrib-preflight requirement, not upstream-sourced)
+
+## PR worktree run (pr10633-search @ 1bfbf79b2a) - all commands wrapped in timeout 900, overall exit 0
+
+PASS: pnpm --filter server exec vitest run src/services/search/services/search.spec.ts
+PASS: pnpm --filter standalone exec vitest run src/services/search/services/search.spec.ts
+PASS: pnpm --filter server exec vitest run src/services/search/expressions/note_content_fulltext.spec.ts
+PASS: pnpm --filter standalone exec vitest run src/services/search/expressions/note_content_fulltext.spec.ts
+PASS: pnpm --filter server exec vitest run src/services/search/match_quality.spec.ts
+PASS: pnpm --filter standalone exec vitest run src/services/search/match_quality.spec.ts
+PASS: pnpm --filter server exec vitest run src/services/search/services/lex.spec.ts
+PASS: pnpm --filter standalone exec vitest run src/services/search/services/lex.spec.ts
+PASS: pnpm --filter server exec vitest run src/services/search/services/parse.spec.ts
+PASS: pnpm --filter standalone exec vitest run src/services/search/services/parse.spec.ts
+PASS: pnpm --filter server exec vitest run src/services/search/search_result.spec.ts
+PASS: pnpm --filter standalone exec vitest run src/services/search/search_result.spec.ts
+PASS: pnpm typecheck
+PASS: git diff --check HEAD
+
+Per-spec test counts (server runtime): search 42, note_content_fulltext 7, match_quality 12, lex 29, parse 18, search_result 19. Standalone (WASM) runtime: identical counts, all passed.
+
+## Baseline run (main-baseline @ 916318b3eb) - same spec set, adapted: match_quality.spec.ts does not exist on main
+
+PASS: server src/services/search/services/search.spec.ts
+PASS: standalone src/services/search/services/search.spec.ts
+PASS: server src/services/search/expressions/note_content_fulltext.spec.ts
+PASS: standalone src/services/search/expressions/note_content_fulltext.spec.ts
+PASS: server src/services/search/services/lex.spec.ts
+PASS: standalone src/services/search/services/lex.spec.ts
+PASS: server src/services/search/services/parse.spec.ts
+PASS: standalone src/services/search/services/parse.spec.ts
+PASS: server src/services/search/search_result.spec.ts
+PASS: standalone src/services/search/search_result.spec.ts
+
+Per-spec test counts on main (server runtime): search 40, note_content_fulltext 2, lex 25, parse 16, search_result 13.
+
+## Classification
+
+No failures on either side; nothing to classify as regression vs pre-existing. The PR grows every shared search spec and adds match_quality.spec.ts.
