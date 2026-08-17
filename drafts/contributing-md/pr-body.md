@@ -1,3 +1,14 @@
+I created this PR because I wanted a rubric to help me and my agents
+evaluate issues and PRs when triaging and reviewing, in a way that aligns
+and blends with existing practice and conventions. I did not find an
+existing guide, so I researched and built this one. Feedback and
+corrections welcome.
+
+Research record:
+[evidence base and triage rubric](https://github.com/maphew/mitn/blob/main/docs/pr-idea-triage.md),
+[cross-model review of this draft](https://github.com/maphew/mitn/blob/main/drafts/contributing-md/codex-sol-xhigh-review.md),
+[agent session](https://claude.ai/code/session_013ExDLo9cLXLqdM7HtgfFeR).
+
 ## Why
 
 The repository has no CONTRIBUTING.md. The expectations that matter most to
