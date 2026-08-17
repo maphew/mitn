@@ -29,6 +29,10 @@ mitn_root="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
 trilium_root="$(git -C "$mitn_root/../trilium" rev-parse --show-toplevel)"
 ```
 
+## Language
+
+In general, use **ASD-STE100 Simplified Technical English** (**STE**) and consider ELI18 and TLDR. Clarity over jargon, conciseness over length, python zen energy.
+
 ## Beads task and memory workflow
 
 Use `bd` for all durable work tracking. Do not use Markdown TODO lists or
