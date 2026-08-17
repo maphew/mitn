@@ -95,3 +95,44 @@ the same H1 race rather than an independently actionable defect.
       H2).
 3. Report back reproduced yes/no plus whether the desktop throttling repro also
    reproduces it, to settle whether H1 alone explains the report.
+
+## Live repro results (2026-08-17): H1 CONFIRMED on desktop, no device needed
+
+Environment: Trilium at upstream/main `964e23ec56` (referencelink.ts /
+mention_customization.ts unchanged since `372a749ff2`), dev server (web
+client) on Linux, headless Chromium via Playwright, fixture DB copy, 2000 ms
+artificial latency via CDP `Network.emulateNetworkConditions`. Scripts:
+`repro/repro10663.js`, `repro/repro10663b.js`.
+
+Protocol refinements that mattered:
+
+- The mention target must be COLD in froca. A note visible in the tree, or
+  one whose reference link is already rendered in any open note, is cached,
+  and `getReferenceLinkTitle` resolves in a microtask - no gap, no race.
+  Hidden help notes (e.g. `_help_Wy267RK4M69c` "Themes") stay cold.
+  Coldness was asserted in-page (`glob.froca.notes[id]` undefined) and the
+  fetch observed as a throttled `POST /api/tree/load` fired at pick time.
+- Pick the suggestion by keyboard (ArrowDown+Enter). Mouse clicks on the
+  balloon row intermittently failed to register under throttle.
+
+**Result (typed `AAA @Themes`, picked the note, immediately typed
+` BBB CCC DDD` inside the 2 s gap):**
+
+- Expected: `AAA [Themes-link] BBB CCC DDD`
+- Got (settled state): `AAA  BBB CCC DDD[Themes-link]` - the reference link
+  was inserted at the CURRENT caret position when the title fetch resolved,
+  after all text typed during the gap, not at the position where the mention
+  was picked. Intermediate DOM dumps show the `@query` text deleted
+  immediately and the link materializing only ~4-5 s later.
+- A second run (target "Zen mode") showed the harsher variant: the `@query`
+  was deleted and the link never visibly materialized at all.
+
+This is H1's mechanism reproduced end-to-end: `ReferenceLinkCommand.execute`
+awaits the title with no position anchor and inserts at whatever the
+selection is at resolve time. On desktop the misplacement is clean
+(text/link out of order, or the link lost); the report's exact
+duplicated-text symptom plausibly needs H2's Android IME composition on top,
+which still needs a device.
+
+Remaining for a human: only the Android confirmation of the duplication
+symptom itself (protocol above). The mechanism no longer needs confirmation.

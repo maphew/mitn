@@ -344,3 +344,26 @@ gh pr list --repo TriliumNext/Trilium --search "tooltip" --state all
 
 No Trilium source was modified; no branches, refs, or GitHub state were
 created or changed.
+
+## Live repro results (2026-08-17)
+
+Environment: Trilium at upstream/main `964e23ec56` (implicated files unchanged
+since `372a749ff2`), dev server (`tsx src/main.ts`, web client) on Linux
+(Fedora, kernel 7.0.12), headless Chromium driven by Playwright, fixture DB
+copy, no auth. Script: `repro/repro10680.js` in this directory.
+
+**REPRODUCED, exactly as predicted.** Sequence and observations:
+
+1. Open note, open icon picker, hover a tile: one `.tooltip` popup appears as
+   a direct child of `body` ("pear / Icon pack: Boxicons").
+2. Type "arrow" in the picker search box: the popup persists and its trigger is
+   gone - the `[aria-describedby]` back-reference resolves to no element in the
+   document (`triggerStillInDom: false`).
+3. Press Escape (picker closes), click elsewhere: popup still present in
+   `body` at its original position.
+
+This confirms the RULED IN root cause live (delegated per-span Bootstrap
+tooltip orphaned by the react-window re-render; scoped unmount sweep cannot
+reach it). Steps 1-3 of the "Remaining for a human" checklist are done; still
+open: watching the issue video (step 5) and the optional CKEditor emoji
+cross-check (step 4).

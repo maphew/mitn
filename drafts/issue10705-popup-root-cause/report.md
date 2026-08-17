@@ -178,3 +178,28 @@ ffmpeg -i <demo>.gif -vf "select='not(mod(n\,60))'" -vsync vfr frames_%02d.png
 
 No GitHub write operations were performed. No files outside
 `drafts/issue10705-popup-root-cause/` were created or modified.
+
+## Live verification results (2026-08-17)
+
+Environment: Trilium at upstream/main `964e23ec56` (implicated files
+unchanged since `372a749ff2`), dev server (web client) on Linux, headless
+Chromium via Playwright, fixture DB copy. Scripts and screenshots in
+`repro/`. Electron-only surfaces were not run; Web client only.
+
+| Surface | Verdict | Evidence |
+|---|---|---|
+| S1a (tooltip over launcher context menu) | **REPRODUCED** | "New Note" tooltip visible while `#context-menu-container` menu open; screenshot `repro/repro10705-s1a.png` |
+| S1b (tooltip re-shown after dialog close) | **REPRODUCED** | Tooltip correctly hidden while Recent Changes dialog open (5d99e3b02d works there), but re-shown after Escape closes the dialog: focus returns to the launcher button and the `focus` trigger fires with the pointer far away |
+| S2 (web clip badge) | not tested | needs a clipped note in the DB; same bucket A as S1a, which reproduced |
+| S3 (link balloon vs tab switch) | **NOT reproduced** | balloon dismissed on tab switch via BOTH the tab-strip click and the command layer (`triggerCommand("activateNextTab")`, active note verified changed). Bucket D's guess that clickOutsideHandler would only cover the click path was too pessimistic |
+| S4 (menus over PDF iframe) | **REPRODUCED** | note-actions dropdown stays open after a click inside the pdf.js iframe; control click in app chrome closes it immediately |
+| S5 (menu behind prompt modal) | not testable in web | needs Electron's input context menu; z-index analysis (2000 vs 2000, DOM order) stands unchanged on main |
+| S6 (attribute autocomplete stranded) | **NOT reproduced** | autocomplete balloon opens at a sane anchored position and is dismissed when the panel closes (tried Escape-then-close and direct-click close). Consistent with the late-July attribute UI rework changing this surface |
+| S7 (menus taller than viewport) | not re-tested | structural, code-confirmed; nothing changed in `positionMenu()` |
+
+Impact on the split recommendation: still split, but now FOUR issues instead
+of five - bucket D (S3+S6) drops out as not reproducible on current main in
+the web client. If the reporter can still trigger S3/S6 (e.g. in Electron or
+by a different gesture), it can be filed separately with fresh steps.
+Remaining for a human: S5 (Electron), optional S2, and an Electron sweep of
+S1a/S1b/S4 to confirm parity with the web results.
