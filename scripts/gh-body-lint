@@ -61,6 +61,13 @@ lint_gh_body() {
     echo "GitHub body contains GH# refs; use #1234 or owner/repo#1234 for GitHub autolinks" >&2
     failed=1
   fi
+  # Owner style rule: no em dashes in agent prose. Fenced code blocks are exempt
+  # (quoted source may legitimately contain them); like literal \n, this needs a
+  # human rewrite rather than a mechanical --fix.
+  if awk '/^[[:space:]]*(```|~~~)/{in_code=!in_code; next} !in_code && /\xe2\x80\x94/{print FILENAME ":" FNR ": " $0; found=1} END{exit !found}' "$body_file" >&2; then
+    echo "GitHub body contains em dashes outside code fences; use regular dashes or rewrite" >&2
+    failed=1
+  fi
   [[ "$failed" == 0 ]] || die "GitHub body lint failed: $body_file"
 }
 
