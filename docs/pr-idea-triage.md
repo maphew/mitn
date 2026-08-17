@@ -16,6 +16,14 @@ case numbers rot; re-verify specifics before quoting them upstream.
 Companion: [trilium-landscape-2026-08.md](trilium-landscape-2026-08.md)
 (culture, communication style, who's who).
 
+Operative policy: the CONTRIBUTING.md we proposed upstream in
+[TriliumNext/Trilium PR 11064](https://github.com/TriliumNext/Trilium/pull/11064)
+is treated as accepted and in effect for all mitn-driven work until
+upstream says otherwise (owner directive 2026-08-18, memory
+`contributing-guide-in-effect`). Where this rubric and that doc differ,
+the CONTRIBUTING doc wins for our own conduct; the rubric remains the
+finer-grained evidence base for triage lane calls.
+
 ## The 60-second gut check
 
 Work down the list; first hit wins. Lanes: **RED** = doesn't belong, draft a
