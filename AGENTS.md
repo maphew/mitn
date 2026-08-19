@@ -146,9 +146,9 @@ a substantive session:
 
 1. Close completed beads and create beads for remaining work.
 2. Record workflow-changing knowledge with `bd remember`.
-3. Run relevant tests and repository-specific linting. In embedded mode, run
-   the supported checks separately: `bd doctor --check=artifacts`,
-   `bd doctor --check=conventions`, and `bd doctor --check=pollution`.
+3. Run relevant tests and repository-specific linting. `bd doctor` does not
+   work in embedded mode (bd 1.2.2); run `bd lint`, `bd stale`, and
+   `bd orphans`, and confirm `git status --porcelain .beads/` is empty.
 4. Inspect `git status` and the exact diff, then commit intentionally.
 5. Run `bd dolt push`, push Git, and verify both are synchronized.
 6. Confirm no deliverable or dependency is visible only in prose.
