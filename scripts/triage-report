@@ -13,6 +13,7 @@
 #
 # Usage:
 #   triage-report -o <out.md> [--issue N] [--title T] [--build V]
+#                  [--kind bug|pr-test|comparison]
 #                  [--field key=value ...] [--trilium-root PATH] [--force]
 #
 #   -o, --output PATH     Required. Where to write the Markdown report.
@@ -24,6 +25,24 @@
 #   --title T             Short human title for the report header.
 #   --build V             Trilium version/commit under test. Overrides the
 #                          auto-detected commit from --trilium-root.
+#   --kind K               Report preset. One of:
+#                            bug        (default) plain bug report. Sections
+#                                       are labeled "Expected" / "Actual".
+#                            pr-test    evidence from testing a PR branch
+#                                       against main. Sections are labeled
+#                                       "Expected (main behavior)" and
+#                                       "Actual (PR branch behavior)".
+#                            comparison evidence pairing two behaviors that
+#                                       are neither a pure bug nor a PR test
+#                                       (e.g. two configs, two versions).
+#                                       Sections are labeled "Behavior A"
+#                                       and "Behavior B"; name the compared
+#                                       condition explicitly in each section.
+#                          Only the expected/actual section labels and their
+#                          HTML-comment fill-in guidance change; --field keys
+#                          stay "expected" and "actual" for all three kinds.
+#                          Dies listing the valid values if K is none of
+#                          the above.
 #   --field key=value     Pre-fill one field. Repeatable. Valid keys:
 #                          build environment reproduces clean-profile steps
 #                          expected actual scope regression artifact
@@ -47,8 +66,10 @@
 #                     environment-specific configuration as the cause.
 #   steps             Minimal, numbered steps to reproduce from a clean
 #                     state.
-#   expected          What should happen.
-#   actual            What actually happens.
+#   expected          What should happen (label and guidance change with
+#                     --kind; see above).
+#   actual            What actually happens (label and guidance change with
+#                     --kind; see above).
 #   scope             Who/what is affected: all users, one platform, one
 #                     note type, a specific import/export path, etc.
 #   regression        Is this a regression, and if so against which
@@ -145,6 +166,7 @@ ISSUE=""
 TITLE=""
 TRILIUM_ROOT_OVERRIDE=""
 FORCE=0
+KIND="bug"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -170,6 +192,8 @@ while [[ $# -gt 0 ]]; do
       ;;
     --trilium-root) [[ $# -ge 2 ]] || die "--trilium-root needs a value"; TRILIUM_ROOT_OVERRIDE="$2"; shift 2;;
     --trilium-root=*) TRILIUM_ROOT_OVERRIDE="${1#--trilium-root=}"; shift;;
+    --kind) [[ $# -ge 2 ]] || die "--kind needs a value"; KIND="$2"; shift 2;;
+    --kind=*) KIND="${1#--kind=}"; shift;;
     --force) FORCE=1; shift;;
     -h|--help) usage; exit 0;;
     -*) die "unknown flag: $1 (see --help)";;
@@ -180,6 +204,28 @@ done
 [[ -n "$OUT" ]] || die "usage: triage-report -o <out.md> [--issue N] [--title T] [--build V] [--field key=value ...] (see --help)"
 [[ -z "$ISSUE" || "$ISSUE" =~ ^[0-9]+$ ]] || die "--issue must be numeric (got '$ISSUE')"
 [[ "$FORCE" -eq 1 || ! -e "$OUT" ]] || die "refusing to overwrite existing file: $OUT (use --force to overwrite)"
+case "$KIND" in
+  bug|pr-test|comparison) ;;
+  *) die "--kind must be one of: bug, pr-test, comparison (got '$KIND')";;
+esac
+
+# --kind reframes only the expected/actual section labels and their
+# HTML-comment fill-in guidance to fit the kind of evidence being recorded.
+# --field keys stay "expected" and "actual" regardless of --kind.
+case "$KIND" in
+  pr-test)
+    FIELD_LABEL_expected="Expected (main behavior)"
+    FIELD_LABEL_actual="Actual (PR branch behavior)"
+    FIELD_GUIDANCE_expected="What main (pre-PR) behavior looks like when following the steps above."
+    FIELD_GUIDANCE_actual="What the PR branch actually does instead, including exact error text if any."
+    ;;
+  comparison)
+    FIELD_LABEL_expected="Behavior A"
+    FIELD_LABEL_actual="Behavior B"
+    FIELD_GUIDANCE_expected="What happens under the first condition being compared (Behavior A). Name the condition explicitly (version, config, platform, etc.)."
+    FIELD_GUIDANCE_actual="What happens under the second condition being compared (Behavior B). Name the condition explicitly (version, config, platform, etc.)."
+    ;;
+esac
 
 # --- resolve the Trilium checkout for build auto-detection ---------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

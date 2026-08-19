@@ -48,6 +48,65 @@ The full analysis stays in the local review note, not the upstream post."
   echo "$words"
 }
 
+# Warn (non-fatal) when a paragraph outside fenced code looks hard-wrapped:
+# 2+ consecutive non-empty plain-text lines with no blank line between them,
+# where a non-final line is under ~80 chars. GitHub renders every single
+# newline in an issue/PR/comment body as a hard <br> (unlike a rendered .md
+# file in a repo), so text wrapped at a fixed column width displays as
+# broken short lines, especially on mobile - bodies should read one line
+# per paragraph. Lines that legitimately stack without a blank line between
+# them - headings, list items, table rows, blockquotes, explicit hard-break
+# lines (two trailing spaces or a trailing backslash), setext underlines,
+# link-reference definitions, and short "Label: value" metadata lines (as in
+# a triage-report Environment block, where the stacking is the point) - are
+# excluded and never open or extend a run. HTML comments (invisible on GitHub) are stripped before the check
+# runs, via the same strip_html_comments helper word_budget uses, so a
+# multi-line comment's interior and closing lines never get mistaken for
+# paragraph text; strip_html_comments is line-count preserving so line
+# numbers stay aligned with the original file. Prints "file:start-end: ..."
+# for each flagged run and exits 0 if any were found, 1 otherwise, so
+# callers can gate a warning message on the exit code the same way the
+# em-dash check does.
+hard_wrap_check() {
+  local body_file="$1"
+  strip_html_comments < "$body_file" | awk -v fname="$body_file" '
+    function reset_run() { run_n = 0; delete run_lines; delete run_lens }
+    function flush_run(   i, is_wrapped) {
+      if (run_n >= 2) {
+        is_wrapped = 0
+        for (i = 1; i < run_n; i++) {
+          if (run_lens[i] < 80) { is_wrapped = 1; break }
+        }
+        if (is_wrapped) {
+          print fname ":" run_lines[1] "-" run_lines[run_n] \
+            ": paragraph looks hard-wrapped (no blank line between short lines)"
+          found = 1
+        }
+      }
+      reset_run()
+    }
+    /^[[:space:]]*(```|~~~)/ { flush_run(); in_code = !in_code; next }
+    in_code { next }
+    /^[[:space:]]*$/                             { flush_run(); next }  # blank line (incl. stripped HTML comment)
+    /^[[:space:]]*#+[[:space:]]/                  { flush_run(); next }  # heading
+    /^[[:space:]]*>/                              { flush_run(); next }  # blockquote
+    /^[[:space:]]*[-*+][[:space:]]/               { flush_run(); next }  # unordered list
+    /^[[:space:]]*[0-9]+\.[[:space:]]/            { flush_run(); next }  # ordered list
+    /\|/                                          { flush_run(); next }  # table row
+    /^[[:space:]]*(=+|-+)[[:space:]]*$/           { flush_run(); next }  # setext underline
+    /^[[:space:]]*\[[^]]+\]:[[:space:]]/          { flush_run(); next }  # link ref def
+    /[[:space:]][[:space:]]$/                     { flush_run(); next }  # hard break (2 spaces)
+    /\\$/                                         { flush_run(); next }  # hard break (backslash)
+    /^[[:space:]]*[A-Za-z][A-Za-z0-9 \/_-]{0,24}:[[:space:]]/ { flush_run(); next }  # short "Label: value" metadata line, stacks intentionally
+    {
+      run_n++
+      run_lines[run_n] = FNR
+      run_lens[run_n] = length($0)
+    }
+    END { flush_run(); exit !found }
+  '
+}
+
 lint_gh_body() {
   local body_file="$1"
   [[ -f "$body_file" ]] || die "GitHub body file not found: $body_file"
@@ -67,6 +126,11 @@ lint_gh_body() {
   if awk '/^[[:space:]]*(```|~~~)/{in_code=!in_code; next} !in_code && /\xe2\x80\x94/{print FILENAME ":" FNR ": " $0; found=1} END{exit !found}' "$body_file" >&2; then
     echo "GitHub body contains em dashes outside code fences; use regular dashes or rewrite" >&2
     failed=1
+  fi
+  # Warn only: this never sets $failed. See hard_wrap_check for the
+  # GitHub-newlines-become-<br> rationale.
+  if hard_wrap_check "$body_file" >&2; then
+    echo "GitHub body may contain hard-wrapped paragraph(s) (line numbers above); GitHub turns single newlines into line breaks, so use one line per paragraph" >&2
   fi
   [[ "$failed" == 0 ]] || die "GitHub body lint failed: $body_file"
 }
@@ -96,6 +160,11 @@ Usage:
 Checks GitHub-facing Markdown bodies for common formatting mistakes:
   - literal \n sequences that render as text instead of line breaks
   - GH#1234 refs that do not autolink on GitHub
+  - em dashes outside code fences
+  - hard-wrapped paragraphs (warning only, does not fail): GitHub renders
+    every single newline in an issue/PR/comment body as a hard line break,
+    unlike a rendered .md file in a repo, so text wrapped at a fixed column
+    width looks broken, especially on mobile - write one line per paragraph
 
 With --fix, rewrites GH#1234 to #1234 in-place. Literal \n sequences are
 reported but not rewritten because they may appear inside legitimate examples.

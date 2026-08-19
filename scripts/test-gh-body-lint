@@ -40,4 +40,42 @@ printf 'two words\n```\ncode words never counted here at all\n```\n' > "$TMP/fen
 printf 'text\n```\nunclosed\n' > "$TMP/unterm.md"
 if "$LINT" --max-words 100 "$TMP/unterm.md" >/dev/null 2>&1; then fail "unterminated fence should fail"; fi
 
+# 8. Hard-wrapped paragraph triggers a warning (stderr) but still passes.
+printf 'This is a paragraph that has been wrapped at\napproximately seventy columns for readability\nwhich looks broken when rendered as a GitHub br.\n' \
+  > "$TMP/hardwrapped.md"
+"$LINT" "$TMP/hardwrapped.md" >/dev/null 2>"$TMP/hardwrapped.err" \
+  || fail "hard-wrapped paragraph is a warning, not a failure"
+grep -q 'hard-wrapped' "$TMP/hardwrapped.err" || fail "hard-wrapped paragraph should warn on stderr"
+
+# 9. A list (no blank lines between items) does not warn.
+printf -- '- item one is quite short\n- item two is quite short\n- item three is quite short\n' \
+  > "$TMP/list.md"
+"$LINT" "$TMP/list.md" >/dev/null 2>"$TMP/list.err" || fail "list should pass"
+[[ ! -s "$TMP/list.err" ]] || fail "list should not warn about hard-wrapping: $(cat "$TMP/list.err")"
+
+# 10. Fenced code containing wrapped text does not warn.
+printf 'Some text.\n\n```\nline one is fairly short text here\nline two is also fairly short as well\n```\n' \
+  > "$TMP/fenced-wrapped.md"
+"$LINT" "$TMP/fenced-wrapped.md" >/dev/null 2>"$TMP/fenced-wrapped.err" || fail "fenced wrapped text should pass"
+[[ ! -s "$TMP/fenced-wrapped.err" ]] || fail "fenced code should not warn about hard-wrapping: $(cat "$TMP/fenced-wrapped.err")"
+
+# 11. One-line-per-paragraph body does not warn.
+printf '# Heading\n\nFirst paragraph as a single line.\n\nSecond paragraph, also a single line.\n' \
+  > "$TMP/oneliner.md"
+"$LINT" "$TMP/oneliner.md" >/dev/null 2>"$TMP/oneliner.err" || fail "one-line-per-paragraph body should pass"
+[[ ! -s "$TMP/oneliner.err" ]] || fail "one-line-per-paragraph body should not warn: $(cat "$TMP/oneliner.err")"
+
+# 12. A multi-line HTML comment's interior and closing lines do not warn.
+printf '<!--\nthis is a comment line here\nanother comment line here\n-->\n\nReal paragraph.\n' \
+  > "$TMP/htmlcomment.md"
+"$LINT" "$TMP/htmlcomment.md" >/dev/null 2>"$TMP/htmlcomment.err" || fail "HTML comment body should pass"
+[[ ! -s "$TMP/htmlcomment.err" ]] || fail "multi-line HTML comment should not warn about hard-wrapping: $(cat "$TMP/htmlcomment.err")"
+
+# 13. Stacked "Label: value" metadata lines (triage-report Environment block)
+# do not warn - the hard breaks there are intentional.
+printf 'OS: Linux 7.0.12-201.fc44.x86_64\nNode: v26.7.0\n\nA real one-line paragraph after the metadata block.\n' \
+  > "$TMP/metadata.md"
+"$LINT" "$TMP/metadata.md" >/dev/null 2>"$TMP/metadata.err" || fail "metadata block body should pass"
+[[ ! -s "$TMP/metadata.err" ]] || fail "Label: value metadata lines should not warn: $(cat "$TMP/metadata.err")"
+
 echo "ok: all gh-body-lint smoke tests passed"

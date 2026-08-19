@@ -97,7 +97,27 @@ Input:
 Options:
   --run               Actually run each command in the trilium root and
                        report pass/fail per command; exits non-zero if any
-                       command fails. Default just prints commands+reasons.
+                       command fails. Prints an end-of-run summary block
+                       (one PASS/FAIL/SKIP line per command) after the log.
+                       Default just prints commands+reasons.
+  --narrow            Skip the whole-package fallback command that would
+                       otherwise run when a changed file has no same-name
+                       spec. Prints a one-line note per skipped fallback
+                       instead of emitting/running it. Does not affect
+                       trilium-e2e, which has no such fallback.
+  --compare <dir>     Also run every emitted command in a second trilium
+                       worktree at <dir> (e.g. a clean upstream/main
+                       checkout), so pre-existing failures can be told apart
+                       from ones introduced by the changes under test. The
+                       root resolved above (via --trilium-root or the
+                       default sibling lookup) is labeled "pr"; <dir> is
+                       labeled "base" in the summary. Implies --run. <dir>
+                       must be a real trilium worktree (package.json and
+                       .git present); otherwise the script exits early.
+                       Repo-hygiene commands (currently: `git diff --check`)
+                       run pr-only under --compare, since they inspect the
+                       ref/worktree they run in rather than the change under
+                       test; the summary shows "base=n/a" for those.
   --base <ref>         Ref to diff against when auto-detecting changed paths
                        (merge-base, not a raw two-dot diff). Default:
                        upstream/main. Ignored when explicit paths are given.
@@ -112,17 +132,24 @@ Examples:
   scripts/contrib-preflight --base upstream/main
   scripts/contrib-preflight apps/server/src/services/open_id.ts
   scripts/contrib-preflight --run apps/client/src/widgets/foo.tsx
+  scripts/contrib-preflight --run --narrow
+  scripts/contrib-preflight --compare ../trilium-upstream-main
 USAGE
 }
 
 RUN=0
+NARROW=0
 BASE="upstream/main"
 TRILIUM_ROOT_OVERRIDE=""
+COMPARE_ROOT_ARG=""
 PATHS=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --run) RUN=1; shift;;
+    --narrow) NARROW=1; shift;;
+    --compare) [[ $# -ge 2 ]] || die "--compare needs a value"; COMPARE_ROOT_ARG="$2"; shift 2;;
+    --compare=*) COMPARE_ROOT_ARG="${1#--compare=}"; shift;;
     --base) [[ $# -ge 2 ]] || die "--base needs a value"; BASE="$2"; shift 2;;
     --base=*) BASE="${1#--base=}"; shift;;
     --trilium-root) [[ $# -ge 2 ]] || die "--trilium-root needs a value"; TRILIUM_ROOT_OVERRIDE="$2"; shift 2;;
@@ -132,6 +159,10 @@ while [[ $# -gt 0 ]]; do
     *) PATHS+=("$1"); shift;;
   esac
 done
+
+# --compare implies --run: there is no useful print-only comparison, since
+# the whole point is to observe pass/fail in two roots.
+[[ -n "$COMPARE_ROOT_ARG" ]] && RUN=1
 
 # Resolve the trilium checkout root, mirroring AGENTS.md's repository
 # boundary convention: derive mitn's root from this script's own location
@@ -145,6 +176,19 @@ else
   mitn_root="$(dirname "$mitn_common_git_dir")"
   TRILIUM_ROOT="$(git -C "$mitn_root/../trilium" rev-parse --show-toplevel 2>/dev/null)" \
     || die "no trilium checkout found at $mitn_root/../trilium; pass --trilium-root <dir>"
+fi
+
+# Resolve and validate the --compare worktree, if given. Checked eagerly
+# (before any command is emitted or run) so a bad --compare path fails fast
+# rather than after a long test run in the primary root.
+COMPARE_ROOT=""
+if [[ -n "$COMPARE_ROOT_ARG" ]]; then
+  [[ -f "$COMPARE_ROOT_ARG/package.json" ]] \
+    || die "--compare '$COMPARE_ROOT_ARG' has no package.json; not a trilium worktree"
+  [[ -e "$COMPARE_ROOT_ARG/.git" ]] \
+    || die "--compare '$COMPARE_ROOT_ARG' has no .git; not a trilium worktree"
+  COMPARE_ROOT="$(git -C "$COMPARE_ROOT_ARG" rev-parse --show-toplevel 2>/dev/null)" \
+    || die "--compare '$COMPARE_ROOT_ARG' is not a git checkout"
 fi
 
 # --- path normalization -----------------------------------------------
@@ -280,7 +324,16 @@ find_sibling_spec() {
 
 CMD_COUNT=0
 REASONS=()
+PR_ONLY=() # parallel to REASONS: 1 if a command should only run in the "pr"
+           # root under --compare (repo-hygiene checks that inspect the ref
+           # or worktree they run in, not the change under test - running
+           # them in an unrelated "base" root either errors on a missing
+           # object or reports that root's own unrelated dirt as a
+           # fabricated pre-existing failure)
 NOTED_NO_TEST=()
+SUMMARY_LINES=() # populated here (--narrow skips) and in the --run loop below
+LAST_ADD_CMD_INDEX=-1 # set by add_cmd to the index (new or deduped) of the
+                       # command just added, so callers can flag it pr-only
 
 add_cmd() {
   local reason="$1"; shift
@@ -290,6 +343,7 @@ add_cmd() {
     local -n existing="CMD_$i"
     existing_serialized="$(printf '%s\x1f' "${existing[@]}")"
     if [[ "$existing_serialized" == "$candidate" ]]; then
+      LAST_ADD_CMD_INDEX=$i
       return 0
     fi
   done
@@ -297,6 +351,8 @@ add_cmd() {
   local -n new_cmd="CMD_$CMD_COUNT"
   new_cmd=("$@")
   REASONS+=("$reason")
+  PR_ONLY+=(0)
+  LAST_ADD_CMD_INDEX=$CMD_COUNT
   CMD_COUNT=$((CMD_COUNT + 1))
 }
 
@@ -309,6 +365,15 @@ note_no_test_script() {
   done
   NOTED_NO_TEST+=("$pkg_name")
   echo "# $pkg_name has no test script - typecheck only"
+}
+
+# Print a one-line note when --narrow skips a whole-package fallback command
+# instead of emitting/running it. Fed into the end-of-run summary too, so a
+# skip shows up there alongside the PASS/FAIL lines.
+note_narrow_skip() {
+  local reason="$1"
+  echo "# --narrow: skipped whole-package fallback ($reason)"
+  SUMMARY_LINES+=("SKIP (--narrow): $reason")
 }
 
 for f in "${CHANGED_PATHS[@]}"; do
@@ -352,6 +417,8 @@ for f in "${CHANGED_PATHS[@]}"; do
       if [[ -n "$target" ]]; then
         add_cmd "narrowest apps/server spec ($target_note), run explicitly - trilium/CLAUDE.md 'Running a single test file'" \
           pnpm --filter server exec vitest run "$target"
+      elif [[ "$NARROW" == 1 ]]; then
+        note_narrow_skip "apps/server whole-package run; $target_note"
       else
         add_cmd "$target_note, run explicitly - trilium/CLAUDE.md 'pnpm --filter server test <path-or-pattern>'" \
           pnpm --filter server exec vitest run
@@ -361,6 +428,8 @@ for f in "${CHANGED_PATHS[@]}"; do
       if [[ -n "$target" ]]; then
         add_cmd "narrowest apps/client spec ($target_note) - writing-unit-tests SKILL.md 'Single file (client)'" \
           pnpm --filter @triliumnext/client exec vitest run "$target"
+      elif [[ "$NARROW" == 1 ]]; then
+        note_narrow_skip "apps/client whole-package run; $target_note"
       else
         add_cmd "$target_note, run explicitly - SKILL.md 'Whole package: pnpm --filter <pkg> test'" \
           pnpm --filter @triliumnext/client exec vitest run
@@ -372,6 +441,8 @@ for f in "${CHANGED_PATHS[@]}"; do
           pnpm --filter server exec vitest run "$target"
         add_cmd "trilium-core spec, standalone (WASM) runtime ($target_note) - server-and-core.md 'runs under BOTH runtimes'" \
           pnpm --filter standalone exec vitest run "$target"
+      elif [[ "$NARROW" == 1 ]]; then
+        note_narrow_skip "trilium-core whole-package run, both server and standalone runtimes; $target_note"
       else
         add_cmd "$target_note (trilium-core has no runner of its own; server runtime), run explicitly - server-and-core.md" \
           pnpm --filter server exec vitest run
@@ -391,6 +462,8 @@ for f in "${CHANGED_PATHS[@]}"; do
       elif [[ -n "$target" ]]; then
         add_cmd "narrowest $pkg_dir_rel spec ($target_note), run explicitly - SKILL.md 'Filtered (preferred): pnpm --filter <pkg> test <path-or-pattern>'" \
           pnpm --filter "$pkg_name" exec vitest run "$target"
+      elif [[ "$NARROW" == 1 ]]; then
+        note_narrow_skip "$pkg_dir_rel whole-package run; $target_note"
       else
         add_cmd "$target_note, run explicitly - SKILL.md 'Whole package: pnpm --filter <pkg> test'" \
           pnpm --filter "$pkg_name" exec vitest run
@@ -404,6 +477,11 @@ add_cmd "resolves project references correctly, unlike a raw tsc - trilium/CLAUD
   pnpm typecheck
 add_cmd "flags trailing whitespace / unresolved conflict markers since $DIFF_CHECK_REF before committing (mitn contrib-preflight requirement, not upstream-sourced)" \
   git diff --check "$DIFF_CHECK_REF"
+# pr-only: DIFF_CHECK_REF is a SHA scoped to TRILIUM_ROOT's own history (or
+# a merge-base computed there), and the check inspects that root's own
+# worktree/index dirt - neither is meaningful re-run against an unrelated
+# --compare root. See PR_ONLY comment above.
+PR_ONLY[$LAST_ADD_CMD_INDEX]=1
 
 # --- print or run ----------------------------------------------------------
 
@@ -424,17 +502,60 @@ for ((i = 0; i < CMD_COUNT; i++)); do
   rendered="${rendered% }"
   echo "==> $rendered"
   echo "    # $reason"
-  set +e
-  ( cd "$TRILIUM_ROOT" && "${cmd_arr[@]}" )
-  status=$?
-  set -e
-  if [[ "$status" == 0 ]]; then
-    echo "PASS: $rendered"
+
+  if [[ -n "$COMPARE_ROOT" ]]; then
+    # Comparison mode: run the same command in both roots so a failure can
+    # be told apart from a pre-existing one. Overall exit status tracks the
+    # "pr" root only - a base-root failure is pre-existing, not something
+    # this change caused, so it's reported but doesn't fail the run.
+    echo "  -- pr: $TRILIUM_ROOT --"
+    set +e
+    ( cd "$TRILIUM_ROOT" && "${cmd_arr[@]}" )
+    pr_status=$?
+    set -e
+    if [[ "$pr_status" == 0 ]]; then pr_result=PASS; else pr_result=FAIL; failed=1; fi
+    echo "  pr: $pr_result ($pr_status)"
+
+    if [[ "${PR_ONLY[$i]}" == 1 ]]; then
+      # Repo-hygiene command: the ref/worktree it inspects belongs to the
+      # "pr" root, so re-running it in an unrelated "base" root would either
+      # error on a missing object or report that root's own unrelated dirt
+      # as a fabricated pre-existing failure. Skip it there.
+      echo "  base: n/a (pr-only command, not re-run against --compare root)"
+      SUMMARY_LINES+=("base=n/a pr=$pr_result: $rendered")
+    else
+      echo "  -- base: $COMPARE_ROOT --"
+      set +e
+      ( cd "$COMPARE_ROOT" && "${cmd_arr[@]}" )
+      base_status=$?
+      set -e
+      if [[ "$base_status" == 0 ]]; then base_result=PASS; else base_result=FAIL; fi
+      echo "  base: $base_result ($base_status)"
+
+      SUMMARY_LINES+=("base=$base_result pr=$pr_result: $rendered")
+    fi
   else
-    echo "FAIL ($status): $rendered" >&2
-    failed=1
+    set +e
+    ( cd "$TRILIUM_ROOT" && "${cmd_arr[@]}" )
+    status=$?
+    set -e
+    if [[ "$status" == 0 ]]; then
+      echo "PASS: $rendered"
+      SUMMARY_LINES+=("PASS: $rendered")
+    else
+      echo "FAIL ($status): $rendered" >&2
+      SUMMARY_LINES+=("FAIL ($status): $rendered")
+      failed=1
+    fi
   fi
   echo
+done
+
+# End-of-run summary: one line per executed command (plus any --narrow
+# skips noted above), so the result is scannable without scrolling the log.
+echo "=== summary ==="
+for line in "${SUMMARY_LINES[@]}"; do
+  echo "$line"
 done
 
 exit "$failed"

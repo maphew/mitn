@@ -17,16 +17,20 @@ usage() {
 Usage:
   scripts/pr-context (--pr N | --issue N | --branch NAME)
                       [--repo owner/name] [--trilium-root PATH]
+                      [--min-signal file|subsystem]
 
 Reports, read-only, the context an agent needs before editing in the
 trilium checkout:
 
-  1. Target        - title, state, author, base, mergeable status.
+  1. Target        - title, state, author, base, mergeable status, and
+                      (for --pr/--issue) the body text verbatim.
   2. Linked issue/discussion - closing-issue refs and issue/discussion
                       links found in the body (or commits, for a branch).
   3. Overlapping open PRs - other OPEN upstream PRs touching the same
-                      subsystems (top-level app/package dirs plus
-                      second-level src dirs).
+                      files or subsystems (top-level app/package dirs
+                      plus second-level src dirs). Same-file hits are
+                      listed before, and marked apart from,
+                      same-subsystem-only hits.
   4. Relevant local guidance - matching trilium/CLAUDE.md headings and
                       .claude/skills/ entries.
   5. Divergence     - ahead/behind vs upstream/main (branch), or
@@ -40,6 +44,11 @@ Options:
   --trilium-root P   Path to the trilium checkout. Default: resolved from
                       this script's own repo (mitn) as the sibling
                       ../trilium directory, the way AGENTS.md does.
+  --min-signal WHAT  Minimum overlap signal to report in section 3: "file"
+                      (only PRs sharing an identical touched file) or
+                      "subsystem" (also list PRs that only share a
+                      top-level/second-level dir bucket). Default:
+                      subsystem, preserving current breadth.
   -h, --help         Show this help.
 
 Strictly read-only: runs no git fetch/checkout/stash and no gh mutation
@@ -52,6 +61,8 @@ REPO="TriliumNext/Trilium"
 TRILIUM_ROOT=""
 MODE=""
 TARGET=""
+MIN_SIGNAL="subsystem"
+BODY_LINE_CAP=200
 
 set_mode() {
   [[ -z "$MODE" ]] || die "only one of --pr/--issue/--branch may be given"
@@ -66,6 +77,7 @@ while [[ $# -gt 0 ]]; do
     --branch) [[ $# -ge 2 ]] || die "--branch needs a value"; set_mode "branch" "$2"; shift 2;;
     --repo) [[ $# -ge 2 ]] || die "--repo needs a value"; REPO="$2"; shift 2;;
     --trilium-root) [[ $# -ge 2 ]] || die "--trilium-root needs a value"; TRILIUM_ROOT="$2"; shift 2;;
+    --min-signal) [[ $# -ge 2 ]] || die "--min-signal needs a value"; MIN_SIGNAL="$2"; shift 2;;
     -h|--help) usage; exit 0;;
     -*) die "unknown flag: $1 (see --help)";;
     *) die "unexpected argument: $1 (use --pr/--issue/--branch, see --help)";;
@@ -74,6 +86,8 @@ done
 
 [[ -n "$MODE" ]] || { usage >&2; die "one of --pr, --issue, --branch is required"; }
 [[ "$TARGET" =~ ^[0-9]+$ || "$MODE" == "branch" ]] || die "--$MODE expects a number, got '$TARGET'"
+[[ "$MIN_SIGNAL" == "file" || "$MIN_SIGNAL" == "subsystem" ]] \
+  || die "--min-signal must be 'file' or 'subsystem', got '$MIN_SIGNAL'"
 
 command -v gh >/dev/null 2>&1 || die "gh CLI not found on PATH"
 command -v jq >/dev/null 2>&1 || die "jq not found on PATH"
@@ -187,6 +201,25 @@ keywords_of() {
     | sort -u
 }
 
+# print_body <text>: print body text verbatim under section 1. Caps at
+# BODY_LINE_CAP lines - never truncates silently, always states how many
+# lines were left out.
+print_body() {
+  local body="$1" total_lines omitted
+  if [[ -z "$body" ]]; then
+    echo "(empty)"
+    return
+  fi
+  total_lines="$(wc -l <<<"$body")"
+  if [[ "$total_lines" -gt "$BODY_LINE_CAP" ]]; then
+    head -n "$BODY_LINE_CAP" <<<"$body"
+    omitted=$(( total_lines - BODY_LINE_CAP ))
+    echo "... ($omitted more line(s) omitted, $total_lines lines total)"
+  else
+    printf '%s\n' "$body"
+  fi
+}
+
 TARGET_FILES_FILE="$TMP_DIR/target_files"
 TARGET_SUBSYS_FILE="$TMP_DIR/target_subsystems"
 : > "$TARGET_FILES_FILE"
@@ -215,6 +248,10 @@ if [[ "$MODE" == "pr" ]]; then
       "Mergeable:  " + .mergeable + " (" + .mergeStateStatus + ")",
       "URL:        " + .url
     ' <<<"$PR_JSON" || true
+    echo
+    echo "Body:"
+    pr_body_text="$(jq_safe "PR body text" -r '.body // ""' <<<"$PR_JSON")" || pr_body_text=""
+    print_body "$pr_body_text"
     jq_safe "PR file list" -r '.files[].path' <<<"$PR_JSON" > "$TARGET_FILES_FILE" || true
   else
     warn "no PR data for $REPO#$TARGET"
@@ -232,6 +269,10 @@ elif [[ "$MODE" == "issue" ]]; then
       "Author:     " + (.author.login // "unknown"),
       "URL:        " + .url
     ' <<<"$ISSUE_JSON" || true
+    echo
+    echo "Body:"
+    issue_body_text="$(jq_safe "issue body text" -r '.body // ""' <<<"$ISSUE_JSON")" || issue_body_text=""
+    print_body "$issue_body_text"
   else
     warn "no issue data for $REPO#$TARGET"
   fi
@@ -359,7 +400,17 @@ else
       --json number,title,files --limit 100)" || open_prs="[]"
     open_count="$(jq_safe "open PR count" 'length' <<<"$open_prs")" || open_count=0
     echo "Checked ${open_count:-0} open PRs."
-    found_any=0
+
+    # PRs that touch an identical file are the high-signal class; PRs that
+    # only share a subsystem bucket are lower signal. Buffer each class to
+    # its own file so same-file hits can always be listed first, ranked
+    # above same-subsystem-only hits (see field note: same-file hits were
+    # getting buried under subsystem-bucket noise).
+    SAME_FILE_HITS_FILE="$TMP_DIR/same_file_hits"
+    SAME_SUBSYS_HITS_FILE="$TMP_DIR/same_subsys_hits"
+    : > "$SAME_FILE_HITS_FILE"
+    : > "$SAME_SUBSYS_HITS_FILE"
+
     while IFS=$'\t' read -r num title; do
       [[ -z "$num" ]] && continue
       [[ "$MODE" == "pr" && "$num" == "$TARGET" ]] && continue
@@ -372,15 +423,21 @@ else
       same_file_overlap="$(comm -12 "$TARGET_FILES_FILE" "$other_files_file")"
       subsys_overlap="$(comm -12 "$TARGET_SUBSYS_FILE" "$other_subsys_file")"
 
-      if [[ -n "$same_file_overlap" || -n "$subsys_overlap" ]]; then
-        found_any=1
-        echo "  PR #$num: $title"
-        if [[ -n "$same_file_overlap" ]]; then
+      if [[ -n "$same_file_overlap" ]]; then
+        {
+          echo "  PR #$num: $title [same-file]"
           while IFS= read -r f; do
             echo "      same file: $f"
           done <<<"$same_file_overlap"
-        fi
-        if [[ -n "$subsys_overlap" ]]; then
+          if [[ -n "$subsys_overlap" ]]; then
+            while IFS= read -r ov; do
+              echo "      overlaps: $ov"
+            done <<<"$subsys_overlap"
+          fi
+        } >> "$SAME_FILE_HITS_FILE"
+      elif [[ -n "$subsys_overlap" ]]; then
+        {
+          echo "  PR #$num: $title [same-subsystem]"
           generic_only=1
           while IFS= read -r ov; do
             echo "      overlaps: $ov"
@@ -389,10 +446,30 @@ else
           if [[ "$generic_only" == 1 ]]; then
             echo "      (subsystem overlap above is only generic buckets - low signal)"
           fi
-        fi
+        } >> "$SAME_SUBSYS_HITS_FILE"
       fi
     done < <(jq_safe "open PR list" -r '.[] | [(.number|tostring), .title] | @tsv' <<<"$open_prs" || true)
-    [[ "$found_any" == 1 ]] || echo "  (no overlapping open PRs found)"
+
+    echo
+    echo "Same-file overlaps (touch an identical file - high signal):"
+    if [[ -s "$SAME_FILE_HITS_FILE" ]]; then
+      cat "$SAME_FILE_HITS_FILE"
+    else
+      echo "  (none found)"
+    fi
+
+    if [[ "$MIN_SIGNAL" == "file" ]]; then
+      echo
+      echo "Same-subsystem overlaps: suppressed (--min-signal file)"
+    else
+      echo
+      echo "Same-subsystem overlaps (shared subsystem bucket only, no shared file):"
+      if [[ -s "$SAME_SUBSYS_HITS_FILE" ]]; then
+        cat "$SAME_SUBSYS_HITS_FILE"
+      else
+        echo "  (none found)"
+      fi
+    fi
   fi
 fi
 
