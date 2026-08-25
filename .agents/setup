@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+cd "$repo_root"
+
+readonly bd_version=1.2.2
+readonly install_dir="$HOME/.local/bin"
+export PATH="$install_dir:$PATH"
+
+started=$SECONDS
+printf '[setup] Preparing mitn orb dependencies\n'
+
+installed_version=""
+if command -v bd >/dev/null 2>&1; then
+  installed_version=$(bd version 2>/dev/null | awk 'NR == 1 { print $3 }')
+fi
+
+if [[ "$installed_version" != "$bd_version" ]]; then
+  step_started=$SECONDS
+  printf '[setup] Installing bd %s\n' "$bd_version"
+
+  case "$(uname -m)" in
+    x86_64|amd64)
+      arch=amd64
+      checksum=8140098a51d3b81d5548d1c5e6db1a2d9930e5d141efe2a4bff7d079c4d321e8
+      ;;
+    aarch64|arm64)
+      arch=arm64
+      checksum=501f38a1070d4b9b3b6261a86a3c92c4a52366869021560430a4bb0036afd83a
+      ;;
+    *)
+      printf '[setup] Unsupported architecture: %s\n' "$(uname -m)" >&2
+      exit 1
+      ;;
+  esac
+
+  asset="beads_${bd_version}_linux_${arch}.tar.gz"
+  tmp_dir=$(mktemp -d)
+  trap 'rm -rf -- "$tmp_dir"' EXIT
+  archive="$tmp_dir/$asset"
+
+  curl --connect-timeout 15 --max-time 120 --retry 2 -fsSL \
+    "https://github.com/gastownhall/beads/releases/download/v${bd_version}/${asset}" \
+    -o "$archive"
+  printf '%s  %s\n' "$checksum" "$archive" | sha256sum --check --status
+  tar -xzf "$archive" -C "$tmp_dir"
+
+  bd_path=$(find "$tmp_dir" -maxdepth 2 -type f -name bd -perm -u+x -print -quit)
+  if [[ -z "$bd_path" ]]; then
+    printf '[setup] The bd release archive did not contain an executable.\n' >&2
+    exit 1
+  fi
+
+  mkdir -p -- "$install_dir"
+  install -m 0755 "$bd_path" "$install_dir/bd"
+  rm -rf -- "$tmp_dir"
+  trap - EXIT
+  hash -r
+
+  installed_version=$(bd version 2>/dev/null | awk 'NR == 1 { print $3 }')
+  if [[ "$installed_version" != "$bd_version" ]]; then
+    printf '[setup] Expected bd %s, found %s.\n' \
+      "$bd_version" "${installed_version:-no version}" >&2
+    exit 1
+  fi
+  printf '[setup] Installed bd %s (%ss)\n' \
+    "$bd_version" "$((SECONDS - step_started))"
+else
+  printf '[setup] bd %s is already installed\n' "$bd_version"
+fi
+
+if ! bd status >/dev/null 2>&1; then
+  step_started=$SECONDS
+  printf '[setup] Restoring the Beads database\n'
+  scripts/bootstrap-beads
+  printf '[setup] Restored the Beads database (%ss)\n' \
+    "$((SECONDS - step_started))"
+else
+  printf '[setup] Beads database is ready\n'
+fi
+
+bd status >/dev/null
+printf '[setup] Complete (%ss)\n' "$((SECONDS - started))"

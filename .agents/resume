@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+cd "$repo_root"
+
+export PATH="$HOME/.local/bin:$PATH"
+
+if ! command -v bd >/dev/null 2>&1; then
+  printf '[resume] bd is missing; run .agents/setup.\n' >&2
+  exit 1
+fi
+
+installed_version=$(bd version 2>/dev/null | awk 'NR == 1 { print $3 }')
+if [[ "$installed_version" != 1.2.2 ]]; then
+  printf '[resume] Expected bd 1.2.2, found %s; run .agents/setup.\n' \
+    "${installed_version:-no version}" >&2
+  exit 1
+fi
+
+bd status >/dev/null
+printf '[resume] bd 1.2.2 and the Beads database are ready.\n'

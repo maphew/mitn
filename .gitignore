@@ -19,6 +19,7 @@ build/
 tmp/
 .bv/
 .bt/
+.amp/portals/*
 
 # Beads runtime state not covered by .beads/.gitignore
 .beads/interactions.jsonl
