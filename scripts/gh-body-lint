@@ -97,7 +97,13 @@ hard_wrap_check() {
     /^[[:space:]]*\[[^]]+\]:[[:space:]]/          { flush_run(); next }  # link ref def
     /[[:space:]][[:space:]]$/                     { flush_run(); next }  # hard break (2 spaces)
     /\\$/                                         { flush_run(); next }  # hard break (backslash)
-    /^[[:space:]]*[A-Za-z][A-Za-z0-9 \/_-]{0,24}:[[:space:]]/ { flush_run(); next }  # short "Label: value" metadata line, stacks intentionally
+    /^[[:space:]]*[A-Za-z][A-Za-z0-9 \/_-]*:[[:space:]]/ {
+      label = $0
+      sub(/^[[:space:]]*/, "", label)
+      sub(/:.*/, "", label)
+      # Use length() because mawk does not support interval expressions.
+      if (length(label) <= 25) { flush_run(); next }
+    }
     {
       run_n++
       run_lines[run_n] = FNR

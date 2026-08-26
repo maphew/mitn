@@ -78,4 +78,11 @@ printf 'OS: Linux 7.0.12-201.fc44.x86_64\nNode: v26.7.0\n\nA real one-line parag
 "$LINT" "$TMP/metadata.md" >/dev/null 2>"$TMP/metadata.err" || fail "metadata block body should pass"
 [[ ! -s "$TMP/metadata.err" ]] || fail "Label: value metadata lines should not warn: $(cat "$TMP/metadata.err")"
 
+# 14. A label longer than 25 characters remains ordinary paragraph text.
+printf 'ABCDEFGHIJKLMNOPQRSTUVWXYZ: value\nAnother short prose line.\n' \
+  > "$TMP/long-label.md"
+"$LINT" "$TMP/long-label.md" >/dev/null 2>"$TMP/long-label.err" \
+  || fail "long label body should pass with a warning"
+grep -q 'hard-wrapped' "$TMP/long-label.err" || fail "label longer than 25 characters should still warn"
+
 echo "ok: all gh-body-lint smoke tests passed"
