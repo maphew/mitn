@@ -81,6 +81,16 @@ We are contributors, not maintainers. We open issues and pull requests
 upstream, but do not merge, close, label, or triage other contributors' work
 without explicit authority.
 
+Amp agents must authenticate GitHub CLI commands with `AMP_GH_TOKEN`; the
+default `GH_TOKEN` can be an installation token that reads upstream but cannot
+open pull requests there:
+
+```bash
+GH_TOKEN="$AMP_GH_TOKEN" gh <command>
+```
+
+Never print either token.
+
 Before starting an upstream change, check both remote and local duplicate work:
 
 ```bash
