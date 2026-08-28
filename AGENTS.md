@@ -51,6 +51,11 @@ bd close <id> --reason="Completed and verified"
 Use `--json` when parsing output. Do not use `bd edit`, which opens an
 interactive editor. Run Beads and Dolt commands serially.
 
+Beads synchronization is part of the workflow, not a user-requested follow-up.
+Run `bd dolt push` after each thread milestone that changes task state or
+memory, and again before ending a substantive session. Do not wait for the
+user to ask. Report and resolve synchronization failures before handoff.
+
 Cold-start handoff must remain visible to an agent that reads only `bd prime`
 and `bd ready`:
 
@@ -80,6 +85,14 @@ stack, so name any unavoidable stash and apply it by exact reference.
 We are contributors, not maintainers. We open issues and pull requests
 upstream, but do not merge, close, label, or triage other contributors' work
 without explicit authority.
+
+Write upstream reviews as a peer co-contributor, not as a gatekeeping
+maintainer. Use subject-first advisory language such as "Advise keeping,
+setting, or preserving ..." Avoid courtesy openings such as "Thanks for ...",
+maintainer-like assignments such as "Please keep ...", and bare imperative
+fixes. Prefer "Advise ..." over "I advise ..."; use "I" only when omission
+would make the sentence ambiguous. Formal review states such as approval or
+requesting changes remain valid when the evidence supports them.
 
 Amp agents must authenticate GitHub CLI commands with `AMP_GH_TOKEN`; the
 default `GH_TOKEN` can be an installation token that reads upstream but cannot
