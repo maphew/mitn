@@ -9,9 +9,9 @@
 # memory. Unknown fields become unknown-model / unknown-reasoning.
 #
 # Runtime detection: claude (CLAUDE_CODE_SESSION_ID set), codex (CODEX_HOME or
-# CODEX_THREAD_ID set), amp (AMP_CURRENT_THREAD_ID set). Other runtimes pass
-# their name as $1, e.g. `agent-sig kilocode`. Runtimes whose metadata this
-# script cannot read may supply AGENT_MODEL / AGENT_REASONING env vars.
+# CODEX_THREAD_ID set), amp (AMP_THREAD_ID or AMP_CURRENT_THREAD_ID set). Other
+# runtimes pass their name as $1, e.g. `agent-sig kilocode`. Runtimes whose
+# metadata this script cannot read may supply AGENT_MODEL / AGENT_REASONING.
 set -euo pipefail
 
 form=comment
@@ -28,7 +28,7 @@ if [ -z "$runtime" ]; then
     runtime=claude
   elif [ -n "${CODEX_THREAD_ID:-}" ] || [ -n "${CODEX_HOME:-}" ]; then
     runtime=codex
-  elif [ -n "${AMP_CURRENT_THREAD_ID:-}" ]; then
+  elif [ -n "${AMP_THREAD_ID:-}" ] || [ -n "${AMP_CURRENT_THREAD_ID:-}" ]; then
     runtime=amp
   else
     runtime=unknown-runtime
@@ -87,13 +87,14 @@ case "$runtime" in
     # Amp threads are server-resident since ~2026-04 (orb / any-machine
     # pickup); the local store ~/.local/share/amp/threads/ is a stale archive
     # that stopped receiving files then. Fetch the live payload for the
-    # active thread (AMP_CURRENT_THREAD_ID) via `amp threads export`, falling
-    # back to a local file for that EXACT thread when offline. Never fall
-    # back to "newest local file" - on a post-04 install that silently signs
-    # months-old metadata; unknown-* placeholders are the honest failure.
+    # active thread (AMP_THREAD_ID, or legacy AMP_CURRENT_THREAD_ID) via `amp
+    # threads export`, falling back to a local file for that EXACT thread when
+    # offline. Never fall back to "newest local file" - on a post-04 install
+    # that silently signs months-old metadata; unknown-* placeholders are the
+    # honest failure.
     # Drop only the claude- model-family prefix (sign opus-4-6, not
     # claude-opus-4-6); runtime is already "amp".
-    tid="${AMP_CURRENT_THREAD_ID:-}"
+    tid="${AMP_THREAD_ID:-${AMP_CURRENT_THREAD_ID:-}}"
     threads="$HOME/.local/share/amp/threads"
     src=""
     amp_tmp=""
