@@ -85,4 +85,24 @@ printf 'ABCDEFGHIJKLMNOPQRSTUVWXYZ: value\nAnother short prose line.\n' \
   || fail "long label body should pass with a warning"
 grep -q 'hard-wrapped' "$TMP/long-label.err" || fail "label longer than 25 characters should still warn"
 
+# 15. A fully resolved agent signature passes.
+printf '_amp-gpt-5.6-sol-high on behalf of maphew_\n' > "$TMP/resolved-signature.md"
+"$LINT" "$TMP/resolved-signature.md" >/dev/null 2>&1 \
+  || fail "resolved agent signature should pass"
+
+# 16. Any unresolved agent signature field fails.
+for field in runtime model reasoning; do
+  case "$field" in
+    runtime) signature='_unknown-runtime-gpt-5.6-sol-high on behalf of maphew_' ;;
+    model) signature='_amp-unknown-model-high on behalf of maphew_' ;;
+    reasoning) signature='_amp-gpt-5.6-sol-unknown-reasoning on behalf of maphew_' ;;
+  esac
+  printf '%s\n' "$signature" > "$TMP/unresolved-$field.md"
+  if "$LINT" "$TMP/unresolved-$field.md" >/dev/null 2>"$TMP/unresolved-$field.err"; then
+    fail "unknown $field should fail"
+  fi
+  grep -q 'unresolved agent signature' "$TMP/unresolved-$field.err" \
+    || fail "unknown $field should explain the signature failure"
+done
+
 echo "ok: all gh-body-lint smoke tests passed"

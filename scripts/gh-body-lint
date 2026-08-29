@@ -126,6 +126,10 @@ lint_gh_body() {
     echo "GitHub body contains GH# refs; use #1234 or owner/repo#1234 for GitHub autolinks" >&2
     failed=1
   fi
+  if grep -nE '(Agent-Signature:.*unknown-(runtime|model|reasoning)|unknown-(runtime|model|reasoning).*on behalf of)' "$body_file" >&2; then
+    echo "GitHub body contains an unresolved agent signature; run scripts/agent-sig.sh in Bash and do not post until every field resolves" >&2
+    failed=1
+  fi
   # Owner style rule: no em dashes in agent prose. Fenced code blocks are exempt
   # (quoted source may legitimately contain them); like literal \n, this needs a
   # human rewrite rather than a mechanical --fix.
@@ -166,6 +170,7 @@ Usage:
 Checks GitHub-facing Markdown bodies for common formatting mistakes:
   - literal \n sequences that render as text instead of line breaks
   - GH#1234 refs that do not autolink on GitHub
+  - agent signatures with unknown runtime, model, or reasoning metadata
   - em dashes outside code fences
   - hard-wrapped paragraphs (warning only, does not fail): GitHub renders
     every single newline in an issue/PR/comment body as a hard line break,

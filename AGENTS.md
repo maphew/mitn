@@ -152,8 +152,9 @@ Agent-Signature: {agent_runtime}-{model}-{reasoning} on behalf of {user}
 ```
 
 Generate the exact form with `scripts/agent-sig.sh`, adding `--trailer` for a
-commit. Run it from Bash. Never guess the model or reasoning level; leave the
-script's `unknown-*` placeholders when live metadata is unavailable.
+commit. Run it from Bash immediately before adding the signature; never type or
+guess it. If the output contains an `unknown-*` placeholder, do not publish or
+commit. Resolve the live metadata or stop and report the blocker.
 
 ## Public-repository hygiene
 
