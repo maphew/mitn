@@ -1,0 +1,1 @@
+The scoped CSS rule correctly gives direct child-list views in code notes the application background without affecting nested note lists or excluded MIME types. No actionable regressions were identified.
