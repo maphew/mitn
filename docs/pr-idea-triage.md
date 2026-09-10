@@ -5,9 +5,9 @@ Purpose: a fast gut-check, for agents and people, of whether an upstream PR's
 conformance are judged elsewhere; this rubric asks only "should this exist in
 Trilium at all, in roughly this shape?"
 
-Provenance: TriliumNext has **no CONTRIBUTING.md, no PR template, and no
-written acceptance policy** (confirmed 2026-08-17). Everything below is
-*inferred* from scattered doc statements and from maintainer behavior on
+Provenance: this rubric was researched on 2026-08-17, before TriliumNext's
+contributor guide was merged. Its historical findings come from scattered
+doc statements and maintainer behavior on
 ~30 not-planned issues, 24 closed-unmerged PRs, and ~70 merged outsider PRs
 (evidence window roughly 2026-02 to 2026-08, plus older landmark issues).
 It predicts eliandoran's likely call; it is not his stated policy. Counts and
@@ -18,17 +18,24 @@ Companion: [trilium-landscape-2026-08.md](trilium-landscape-2026-08.md)
 
 Operative policy: the CONTRIBUTING.md we proposed upstream in
 [TriliumNext/Trilium PR 11064](https://github.com/TriliumNext/Trilium/pull/11064)
-is treated as accepted and in effect for all mitn-driven work until
-upstream says otherwise (owner directive 2026-08-18, memory
-`contributing-guide-in-effect`). Where this rubric and that doc differ,
-the CONTRIBUTING doc wins for our own conduct; the rubric remains the
-finer-grained evidence base for triage lane calls.
+was merged on 2026-08-18. The current
+[CONTRIBUTING.md](https://github.com/TriliumNext/Trilium/blob/main/CONTRIBUTING.md)
+is authoritative. It requires maintainer feedback before implementing a
+feature of any size, and directs specialized needs toward scripts or custom
+widgets. Reverified 2026-09-10; see the
+[core-versus-extension research](../reports/core-extension-guidance-2026-09-10.md).
+Where this rubric differs, the contributor guide wins. Older examples of
+features merged without discussion are historical evidence, not exceptions.
 
 ## The 60-second gut check
 
 Work down the list; first hit wins. Lanes: **RED** = doesn't belong, draft a
 polite decline rationale. **YELLOW** = idea needs discussion before code
 review is worth anyone's time. **GREEN** = idea is sound, facilitate landing.
+
+Before using a GREEN feature lane, confirm maintainer feedback on its scope.
+Without that feedback, a new feature is YELLOW unless a RED rule applies,
+regardless of size, opt-in behavior, or a linked issue.
 
 1. Bounty-motivated or bulk AI-farm provenance? → **RED** (hard policy)
 2. Breaks a core invariant: requires online service, huge bundle,
@@ -41,8 +48,8 @@ review is worth anyone's time. **GREEN** = idea is sound, facilitate landing.
    core; suggest the scripting path
 6. Reproducible bugfix at the root cause, or docs fix through the proper
    pipeline, reasonably small? → **GREEN**
-7. Small feature that is opt-in / preserves default behavior, answers an
-   existing feature-request issue, reuses existing components, adds no
+7. Small feature with maintainer feedback supporting its scope, opt-in
+   behavior, an existing feature request, component reuse, and no new
    dependency? → **GREEN**
 8. Touches a maintainer-reserved surface (mobile platform, trilium://
    protocol, sync/encryption architecture, storage model, in-core LLM) or an
@@ -147,18 +154,19 @@ review is worth anyone's time. **GREEN** = idea is sound, facilitate landing.
 - **Docs fixes through the pipeline.** Median 0.5 days, but must use the
   `edit-docs` toolchain; a correct fix bypassing it was redone by the
   maintainer instead of merged (PR 9719).
-- **Small, opt-in, demand-backed features.** Median 2.2 days. Strongest
-  predictors, each independently evidenced:
+- **Small, opt-in, demand-backed features.** Historical median 2.2 days.
+  Current policy still requires maintainer feedback before implementation.
+  Historical predictors, each independently evidenced:
   - links one or more existing feature-request issues ("Closes #...") -
-    neutralizes idea risk entirely; review energy shifts to robustness
+    demonstrates demand but does not establish agreement on scope
     (PRs 8799, 5834, 9190);
   - preserves default behavior / off-by-default (PR 10237 merged cold in
     under 2 days, only comment was "update the documentation");
   - reuses existing components, no new dependency;
   - matches something maintainers already articulated they want ("better
     aligns with our functional expectations", PR 8808).
-  A well-framed small feature with a linked issue and a screenshot can merge
-  with zero conversation (PR 9190).
+  PR 9190 merged with no conversation in the historical sample. That does
+  not waive the current discuss-first rule.
 - **Alignment with declared priorities.** React client port (active), mobile
   and multi-user (declared milestones in the ADR doc) - but via the YELLOW
   discussion path when the surface is maintainer-reserved.
@@ -172,9 +180,9 @@ cause; component-reuse principle; dependency footprint test; bounty/AI-farm
 rejection; maintainer-reserved mobile and protocol; every PR is manually
 tested and maintainer-reviewed (Developer Guide, Branching strategy).
 
-**Implicit but consistent** (revealed by behavior across multiple cases; act
-on it, but cite the behavior, not doctrine): linked-issue demand neutralizes
-idea risk; opt-in/behavior-preserving lands cold; large-feature phasing
+**Historical patterns** (cite the behavior, not doctrine; current guidance
+takes priority): linked-issue demand and opt-in behavior helped features
+land in the sample; large-feature phasing
 template; contributor track record earns latitude ("only two commits is a
 huge red flag", 7447, vs perfectra1n's 11 merges including feature removals);
 old rejections are era-dependent and reversible (Kanban: "too specialized"
