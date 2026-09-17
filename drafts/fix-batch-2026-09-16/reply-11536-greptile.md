@@ -1,0 +1,3 @@
+This is the trade-off listed under "What" in the PR body, and it is the same one `encodeOption()`/`decodeOption()` already accept for select options in this file (6c19d14a41). A stored alias is affected only if it holds the literal text `%2C` or `%25`. A format marker is not possible without a new token, and released parsers drop tokens they do not know, so an older sync peer would lose the alias instead of showing it escaped. I kept the behavior the same as the existing option escape so the two fields do not differ. If a maintainer prefers a migration or a marker, I can add it.
+
+_claude-fable-5-1-high on behalf of matt wilkie_

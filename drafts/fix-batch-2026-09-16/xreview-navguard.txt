@@ -1,0 +1,3 @@
+model: opencode/nemotron-3-ultra-free
+head: eb9ca5b5b6
+No findings (manual run by the orchestrator at 05:20 MST; the batch rerun hit an opencode database lock)

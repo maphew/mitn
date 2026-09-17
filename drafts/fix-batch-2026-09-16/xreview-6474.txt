@@ -1,0 +1,35 @@
+model: opencode/nemotron-3-ultra-free
+head: 470631a785
+> build · nemotron-3-ultra-free
+$ grep -r "cellEdit" /var/home/matt/dev/mitn/.worktrees/trilium/fix-6474/node_modules/tabulator-tables/dist/ 2>/dev/null | head -30
+...output truncated...
+Full output saved to: /var/home/matt/.local/share/opencode/tool-output/tool_0af515f8b001q05G2N4u7lyZA7
+/var/home/matt/dev/mitn/.worktrees/trilium/fix-6474/node_modules/tabulator-tables/dist/js/tabulator.js:				if(this.column.definition.cellEdited){
+/var/home/matt/dev/mitn/.worktrees/trilium/fix-6474/node_modules/tabulator-tables/dist/js/tabulator.js:					this.column.definition.cellEdited.call(this.table, this.getComponent());
+/var/home/matt/dev/mitn/.worktrees/trilium/fix-6474/node_modules/tabulator-tables/dist/js/tabulator.js:				this.dispatchExternal("cellEdited", this.getComponent());
+/var/home/matt/dev/mitn/.worktrees/trilium/fix-6474/node_modules/tabulator-tables/dist/js/tabulator.js:			this.registerColumnOption("cellEditing");
+/var/home/matt/dev/mitn/.worktrees/trilium/fix-6474/node_modules/tabulator-tables/dist/js/tabulator.js:			this.registerColumnOption("cellEdited");
+/var/home/matt/dev/mitn/.worktrees/trilium/fix-6474/node_modules/tabulator-tables/dist/js/tabulator.js:			this.registerColumnOption("cellEditCancelled");
+/var/home/matt/dev/mitn/.worktrees/trilium/fix-6474/node_modules/tabulator-tables/dist/js/tabulator.js:				if(cell.column.definition.cellEditCancelled){
+/var/home/matt/dev/mitn/.worktrees/trilium/fix-6474/node_modules/tabulator-tables/dist/js/tabulator.js:					cell.column.definition.cellEditCancelled.call(this.table, component);
+$ grep -r "cellEditStarted" /var/home/matt/dev/mitn/.worktrees/trilium/fix-6474/node_modules/tabulator-tables/dist/ 2>/dev/null | head -10
+(no output)
+$ grep -r "dispatchExternal.*edit" /var/home/matt/dev/mitn/.worktrees/trilium/fix-6474/node_modules/tabulator-tables/dist/js/tabulator.js 2>/dev/null | head -20
+(no output)
+$ grep -r "dispatchExternal" /var/home/matt/dev/mitn/.worktrees/trilium/fix-6474/node_modules/tabulator-tables/dist/js/tabulator.js 2>/dev/null | grep -i edit | head -20
+this.dispatchExternal("cellEdited", this.getComponent());
+				this.dispatchExternal("cellEditCancelled", component);
+					this.dispatchExternal("cellEditing", component);
+✗ Read apps/client/src/widgets/collections/table/row_editing.tsx failed
+Error: File not found: /var/home/matt/dev/mitn/.worktrees/trilium/fix-6474/apps/client/src/widgets/collections/table/row_editing.tsx
+Did you mean one of these?
+/var/home/matt/dev/mitn/.worktrees/trilium/fix-6474/apps/client/src/widgets/collections/table/row_editing.ts
+Based on my analysis, here are the concrete findings:
+**Bug: Missing `cellEdited` handler** — `apps/client/src/widgets/collections/table/tabulator.tsx:58`
+Only `cellEditCancelled` is hooked. When a user successfully completes an edit (Enter, Tab, click-away), Tabulator fires `cellEdited` but not `cellEditCancelled`. The pending data accumulated during the edit is never flushed — it sits in `pendingDataRef` until the next data change clears it without applying, potentially losing external updates that arrived during the edit.
+**Bug: Missing `cellEditing` handler** — `apps/client/src/widgets/collections/table/tabulator.tsx:58`
+The comment explicitly describes the "Tab ends the edit of one cell before the focus event opens the editor of the next one in the same task" scenario, but the code relies on a `setTimeout(0)` debounce instead of listening to `cellEditing`. This is fragile; a synchronous or microtask-scheduled `cellEditing` could run after the timeout fires.
+**Missing test coverage: successful edit completion** — `apps/client/src/widgets/collections/table/tabulator.spec.tsx`
+No test verifies that pending data is applied after `cellEdited` fires. The existing test only exercises the `cellEditCancelled` path.
+**Missing test coverage: rapid cell-to-cell navigation** — `apps/client/src/widgets/collections/table/tabulator.spec.tsx`
+No test simulates the Tab-key scenario (cellEdited → cellEditing in quick succession) that the comment describes.

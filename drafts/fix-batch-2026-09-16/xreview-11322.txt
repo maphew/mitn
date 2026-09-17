@@ -1,0 +1,4 @@
+model: opencode/nemotron-3-ultra-free
+head: ef63c7ad31
+> build · nemotron-3-ultra-free
+No findings. The fix correctly prevents `svg-pan-zoom` initialization when the SVG has no valid dimensions (zero size, invalid viewBox), which would otherwise throw "The matrix is not invertible." on any zoom/fit/destroy call. The `canFitSvg` guard matches the library's failure conditions exactly, and the parameterized test covers all edge cases (hidden pane, flat pane, empty/NaN/flat viewBox, usable box). The mock accurately reproduces the library's throw behavior for validation.

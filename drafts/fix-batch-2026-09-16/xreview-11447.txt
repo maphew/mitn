@@ -1,0 +1,8 @@
+model: opencode/nemotron-3-ultra-free
+head: 2ffc590625
+> build · nemotron-3-ultra-free
+No findings. The changes are correct:
+1. **NoteAutocomplete.tsx** now accepts an optional `tabIndex` prop and passes it declaratively to the `<input>` — replacing the imperative `useEffect` + `setAttribute` pattern in `relation_values_input.tsx`.
+2. **PromotedAttributes.tsx** (`RelationInput`) and **relation_values_input.tsx** now pass `tabIndex` through to `NoteAutocomplete` (calculated as `200 + position` and forwarded from host props, respectively).
+3. All other 20+ callers of `NoteAutocomplete` don't pass `tabIndex`, which is correct — the prop is optional and the new test confirms the input gets no `tabindex` attribute when the host doesn't provide one.
+4. Tests are added/updated to verify the behavior in `NoteAutocomplete.spec.tsx`, `PromotedAttributes.spec.tsx`, and `relation_values_input.spec.tsx`.

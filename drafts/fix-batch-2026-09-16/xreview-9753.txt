@@ -1,0 +1,8 @@
+model: opencode/nemotron-3-ultra-free
+head: b1ab9e4000
+> build · nemotron-3-ultra-free
+**Findings:**
+1. **apps/desktop/src/services/window.spec.ts:1071-1075** — The test verifies roles via `expect.arrayContaining(["fileMenu", "editMenu", "viewMenu", "close"])` but doesn't explicitly assert that `windowMenu` role is present with its `close` submenu. The `defaultWindowMenus` check (lines 1078-1080) indirectly covers this, but a direct assertion on the template structure would be more robust.
+2. **apps/desktop/src/services/window.spec.ts:1094-1095** — The error-handling test awaits `setImmediate` after `setupWindowingOn`, but the `.catch()` handler in `setupWindowing` (window.ts:507-509) runs as a microtask; `await Promise.resolve()` in `setupWindowingOn` (line 1047) already drains it. The `setImmediate` is unnecessary but harmless.
+3. **apps/desktop/src/services/window.ts:686-699** — No test verifies that `setApplicationMenu` errors are caught and logged. The current error test only triggers a `buildFromTemplate` failure; a separate case where `buildFromTemplate` succeeds but `setApplicationMenu` throws would improve coverage (though Electron's `setApplicationMenu` rarely throws in practice).
+No correctness bugs or regressions found. The implementation correctly avoids the `minimize` accelerator on non-macOS platforms, defers menu creation until `app.whenReady()`, and uses `process.platform` directly since `coreUtils.isMac()` may not be initialized yet.

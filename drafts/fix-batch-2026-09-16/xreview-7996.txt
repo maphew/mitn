@@ -1,0 +1,9 @@
+model: opencode/nemotron-3-ultra-free
+head: 8a6c7f4637
+> build · nemotron-3-ultra-free
+**Findings:**
+1. **`apps/client/src/services/dialog.ts:88-90`** — `takeFocusUntilShown` sets `tabIndex = -1` and `outline = "none"` on the backdrop but `sendDialogHome` (line 165-170) only clears `zIndex`. Bootstrap reuses the same backdrop element across shows (line 30-31), so these styles leak to the next dialog.
+2. **`apps/client/src/services/dialog.ts:81-82`** — `backdrops[backdrops.length - 1]` assumes the last `.modal-backdrop` in the DOM belongs to the current dialog. With multiple modals or async backdrop creation, this can select the wrong backdrop.
+3. **`apps/client/src/services/dialog.spec.ts:160-171`** — Test "does not take focus back from a dialog that is shown at once" mocks `modalShow` to synchronously focus the dialog input, but real Bootstrap focuses asynchronously *after* the transition (which is why `takeFocusUntilShown` exists). The test validates the early-return guard but not the actual async race.
+4. **`apps/client/src/services/dialog.spec.ts`** — Missing test for `takeFocusUntilShown` when `hasBackdrop=true` but no `.modal-backdrop` exists in the DOM (falls back to `blur()`, line 83-85).
+5. **`apps/client/src/services/dialog.spec.ts`** — Missing test verifying focus restoration across sequential dialogs (open A → close A → open B → close B restores original focus).

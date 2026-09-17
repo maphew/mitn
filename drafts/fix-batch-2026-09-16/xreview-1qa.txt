@@ -1,0 +1,8 @@
+model: opencode/nemotron-3-ultra-free
+head: 7f0ac86c68
+> build · nemotron-3-ultra-free
+No findings. The fix correctly addresses the Bootstrap limitation where `hide()` returns early on a disabled toggle by:
+1. Adding a `useLayoutEffect` that calls `hide()` when `disabled` becomes true while `shown` is still true (before the toggle gets the `disabled` attribute)
+2. Deferring the `disabled` attribute on the button until `shown` is false (`disabled={disabled && !shown}`)
+3. Preventing `forceShown` from opening a disabled dropdown
+The tests cover all transitions: open→disabled (closes first), closed→disabled (immediate attribute), and `forceShown` with disabled (stays closed). Both mocked and real-Bootstrap test suites verify the behavior.

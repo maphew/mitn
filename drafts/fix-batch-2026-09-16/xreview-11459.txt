@@ -1,0 +1,2 @@
+model: opencode/nemotron-3-ultra-free
+head: bdc100cbbe

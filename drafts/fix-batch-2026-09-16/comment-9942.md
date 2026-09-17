@@ -1,0 +1,7 @@
+Evidence against the popstate theory above: a browser fires `hashchange` as well as `popstate` when Back moves between two `pushState` entries that differ only in the fragment. Checked in Chromium 150: two `pushState('#root/...')` calls, then `history.back()`, gave `popstate` followed by `hashchange`. Firefox was not tested. So the existing `hashchange` listener in `app_context.ts` does run on Back, and the Back path is the same code in v0.103.0 and on current main.
+
+One code path matches both symptoms (Back does nothing, and refresh ignores the changed URL). `parseNavigationStateFromUrl` in `apps/client/src/services/link.ts` returns nothing unless the full address contains the literal text `/#root`. An address with a query string before the hash is ignored, for example `https://host/?desktop#root/...` or `?mobile`. An address on a reverse-proxy subpath with no slash before the hash is also ignored, for example `https://host/trilium#root/...`. In both cases the listener runs but does nothing, and a refresh falls back to the last saved tab.
+
+This is a hypothesis, not a confirmed cause. @smarzony, could you paste the address bar content (host redacted) at the moment Back fails? Include anything between the host and `#root`. If it shows `?desktop`, `?mobile`, or a subpath without a trailing `/`, that confirms it, and the fix is a small change to that guard.
+
+_claude-fable-5-1-high on behalf of matt wilkie_

@@ -1,0 +1,7 @@
+model: opencode/nemotron-3-ultra-free
+head: cb7ad4563c
+> build · nemotron-3-ultra-free
+**Findings:**
+1. **`apps/server/src/etapi/validators.ts:105`** — Error message says "length 4 to 32" but `utils.isValidEntityId` validates 4–128. Also says "alphanumeric characters" but underscores are allowed. The message should read: "Only letters, digits and underscores are allowed, with a length of 4 to 128."
+2. **`apps/server/spec/etapi/validators.spec.ts`** — Missing test coverage for the 128-char upper bound and underscore acceptance (only tests 4-char "abcd"). Not a regression, but the validator's test doesn't exercise the new limits.
+No other correctness bugs or regressions found. The `ValidationError` import in `notes.ts` already exists (line 10), the core `utils` export is wired correctly, and the forced-noteId validation in `createNewNote` properly guards against non-strings before calling `isValidEntityId`.

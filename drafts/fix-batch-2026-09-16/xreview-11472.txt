@@ -1,0 +1,8 @@
+model: opencode/nemotron-3-ultra-free
+head: 8be81f6a93
+> build · nemotron-3-ultra-free
+**Findings:**
+1. **`apps/client/src/widgets/react/FormList.spec.tsx:78`** — Test reads `window.glob.device` without guarding for its existence; if the test environment doesn't predefine `window.glob`, the test crashes with "Cannot read property 'device' of undefined". Should mock `isMobile()` directly or ensure the global is set up in test bootstrap.
+2. **`apps/client/src/widgets/react/Dropdown.tsx:294`** — Comment for `keepMenuInViewport` says "too tall to fit above or below" but the function adds `altAxis: true` to `preventOverflow`, which guards the *cross-axis* (horizontal overflow for a vertical menu). The comment describes main-axis overflow; it should say "too large to fit in the viewport" or "guards both axes".
+3. **`apps/client/src/widgets/react/FormList.spec.tsx:97`** — Test assumes `isMobile()` reads `window.glob.device`. If `isMobile()` uses a different detection (UA, screen width, etc.), the mobile branch isn't actually exercised. Verify `isMobile()` implementation matches the mock strategy.
+No other correctness bugs or regressions spotted. The refactor cleanly extracts `repositionSubmenu`, adds unit tests for it, and introduces a Popper cross-axis guard reused in three dropdowns.
