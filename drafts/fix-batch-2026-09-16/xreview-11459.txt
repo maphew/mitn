@@ -1,2 +1,42 @@
-model: opencode/nemotron-3-ultra-free
+model: opencode/big-pickle
 head: bdc100cbbe
+apps/client/src/stylesheets/theme-next/base.css:618:#toast-container .toast.no-title .tn-icon {
+apps/client/src/stylesheets/theme-next/forms.css:83:button.btn.btn-primary span.tn-icon,
+$ rg -n "\.tn-icon\s*\{" apps/client/src/stylesheets/theme-next/base.css apps/client/src/stylesheets/*.css | head
+apps/client/src/stylesheets/style.css:2290:.reference-link .tn-icon {
+apps/client/src/stylesheets/style.css:2855:.right-pane-tab .tab-title .tn-icon {
+apps/client/src/stylesheets/style.css:3000:.content-floating-buttons button.tn-icon {
+apps/client/src/stylesheets/theme-next/base.css:164:.dropdown-menu.tn-dropdown-menu .dropdown-item .tn-icon {
+apps/client/src/stylesheets/theme-next/base.css:296:.dropdown-item .tn-icon {
+apps/client/src/stylesheets/theme-next/base.css:561:li.dropdown-item a.dropdown-item-button.tn-icon {
+apps/client/src/stylesheets/theme-next/base.css:612:#toast-container .toast:not(.no-title) .tn-icon {
+apps/client/src/stylesheets/theme-next/base.css:618:#toast-container .toast.no-title .tn-icon {
+$ rg -n "reference-link" apps/client/src --glob '*.ts' --glob '*.tsx' | rg -vi "spec|createLink\(|loadReferenceLinkTitle|clipboard|content_renderer|attribute_renderer" | head -30
+apps/client/src/widgets/type_widgets/text/read_only_helper.ts:4:    const referenceLinks = container.querySelectorAll<HTMLDivElement>("a.reference-link");
+apps/client/src/widgets/type_widgets/text/ReadOnlyText.tsx:80: * mermaid rewriting, inline mermaid, included-note expansion, KaTeX math, reference-link
+apps/client/src/widgets/dialogs/add_link.tsx:15:type LinkType = "reference-link" | "external-link" | "hyper-link";
+apps/client/src/widgets/dialogs/add_link.tsx:80:            setLinkType("reference-link");
+apps/client/src/widgets/dialogs/add_link.tsx:97:            setLinkType((prev) => prev === "external-link" ? "reference-link" : prev);
+apps/client/src/widgets/dialogs/add_link.tsx:214:                        opts.addLink(path, linkType === "reference-link" ? null : linkTitle);
+apps/client/src/widgets/dialogs/add_link.tsx:263:                                    { value: "reference-link", label: t("add_link.link_title_mirrors") },
+apps/client/src/widgets/dialogs/add_link.tsx:271:                    {(linkType !== "reference-link" && (
+apps/client/src/widgets/attribute_widgets/relation_values_input.tsx:95:                        className={`reference-link ${notes[noteId]?.getColorClass() ?? ""}`}
+apps/client/src/services/toast.tsx:30:     * richer content — e.g. a {@link notes} reference-link list — that reads poorly cramped.
+apps/client/src/services/toast.tsx:39:    /** Optional heading rendered above the {@link notes} reference-link list. */
+apps/client/src/widgets/collections/table/columns.tsx:166:                return <span className={`reference-link ${colorClass}`} data-href={`#root/${noteId}`}>
+apps/client/src/widgets/collections/table/columns.tsx:343:    return <span className={`reference-link ${note?.getColorClass()}`} data-href={`#root/${noteId}`}>
+apps/client/src/widgets/react/hooks.tsx:1367: * that way (`glob.getComponentByEl(editor.editing.view.getDomRoot())` — reference-link titles,
+apps/client/src/widgets/collections/presentation/index.tsx:226:    const links = container.querySelectorAll<HTMLLinkElement>("a.reference-link");
+apps/client/src/services/link.ts:219:        $noteLink.addClass("reference-link");
+apps/client/src/services/link.ts:645:        // imported HTML carrying an <a class="reference-link">.
+apps/client/src/widgets/type_widgets/llm_chat/chat_markdown.ts:9: *  - `#root/...` note references get the `reference-link` class so ReadOnlyTextContent's
+apps/client/src/widgets/type_widgets/llm_chat/chat_markdown.ts:19:            return html.replace(/^<a\b/, '<a class="reference-link"');
+apps/client/src/widgets/type_widgets/llm_chat/chat_markdown.ts:34: * `reference-link` anchors), so it renders identically in the chat timeline and in a saved text note.
+$ rg -n "function Icon|export function Icon" apps/client/src --glob '*.tsx' | head -5
+apps/client/src/widgets/react/Icon.tsx:14:export default function Icon({ icon, className, ...restProps }: IconProps) {
+apps/client/src/widgets/react/IconPicker.tsx:55:export default function IconPicker({ onSelect, onReset, resetText, columnCount }: IconPickerProps) {
+apps/client/src/widgets/react/IconPicker.tsx:142:export function IconPickerButton({ className, ...props }: IconPickerButtonProps) {
+apps/client/src/widgets/react/IconPicker.tsx:150:function IconPickerDropdownButton({
+apps/client/src/widgets/react/IconPicker.tsx:216:function IconPickerModalButton({
+No findings.
+Verified: both hardcoded view-mode icons (link.ts:30,32) now carry `tn-icon` matching `note.getIcon()` (bnote.ts:1782); the two updated tests exercise the fixed branches and would fail without the fix; the new spec test (link.spec.ts:957) reaches the changed `getLinkIcon` path and passes; the share-theme CSS mirrors the three client rules; no other producer of reference-link icons (`bx-code-curly`/`bx-file`) was missed, and the CSS/selector changes don't regress the other `.reference-link` contexts (table title cells, relation chips, editor widget).

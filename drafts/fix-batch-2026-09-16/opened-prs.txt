@@ -12,3 +12,4 @@ navguard https://github.com/TriliumNext/Trilium/pull/11545
 1qa https://github.com/TriliumNext/Trilium/pull/11551
 7996 https://github.com/TriliumNext/Trilium/pull/11552
 6474 https://github.com/TriliumNext/Trilium/pull/11553
+11459 https://github.com/TriliumNext/Trilium/pull/11554

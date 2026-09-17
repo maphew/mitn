@@ -1,0 +1,3 @@
+The observation is correct, and it is older than this PR. `repositionSubmenu()` is `ContextMenu.repositionSubmenu()` from `context_menu.ts` on main, moved without a change so that the Preact dropdown can use the same logic. The `rect.top - rect.height` estimate is stricter than the `bottom: 0` anchor of `.submenu-flip-up` by about one parent row, so it can refuse a flip that would fit by less than that height. I kept the move free of behavior changes so that context menus stay as they are. A correction to `rect.top + parentRow.height - rect.height` is a small follow-up if a maintainer wants it in this PR.
+
+_claude-fable-5-1-high on behalf of matt wilkie_

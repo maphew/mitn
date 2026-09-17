@@ -1,0 +1,3 @@
+`apps/script-deployer` is a private development harness with its own scratch data directory, and its script IDs come from the file names under `apps/script-deployer/scripts/` (now `auto-import-xopp` and `auto-import-rnote`). Two files whose names differ only by `-` against `_`, or a file name over 118 characters, would be needed for the collision or the length case in this thread and the next one. I kept the mapping as one `replace()` for that reason. The "Falsy IDs bypass validation" finding on `notes.ts` is valid and I am fixing it in a follow-up commit.
+
+_claude-fable-5-1-high on behalf of matt wilkie_

@@ -9,7 +9,7 @@ Possibly related to issue 9942 (Back button does nothing). I did not confirm tha
 ## What
 
 - `parseNavigationStateFromUrl(url, location: UrlParts = window.location)` takes an optional location, as `calculateExtraWindowUrl()` already does. No caller changes.
-- The guard keeps all earlier acceptances and adds one: the URL is internal if `isSameDocumentUrl()` is true. This new helper drops the hash and the query, then compares the remainder with `${protocol}//${host}${pathname}` as plain strings. It does not call `new URL()`, so a schemeless input cannot throw.
+- The guard keeps all earlier acceptances and adds one: the URL is internal if `isSameDocumentUrl()` is true. This new helper drops the hash, then compares the remainder with `${protocol}//${host}${pathname}${search}` as plain strings. The query string must match (update after Greptile's review), so a link such as `?print#root/...` in note content is still an external page load. It does not call `new URL()`, so a schemeless input cannot throw.
 - A URL with a different origin or a different pathname still returns `{}`, whatever its hash contains.
 - A second commit adds a doc comment for the `location` parameter and makes the default-location test use a literal address.
 
