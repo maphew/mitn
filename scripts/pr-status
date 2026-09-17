@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+# pr-status - one-screen attention report for our open upstream pull requests.
+#
+# Read-only. For each open PR by the author it prints the merge state, the
+# failed checks, and every comment or review by another person or bot that is
+# newer than our last action on the PR (last commit, comment, or review reply).
+# A PR with no such activity and no failed check needs no action. Greptile
+# posts a summary comment after each push; only its reviews count. Recently merged or closed PRs are listed
+# last so their beads and worktrees can be cleaned up.
+
+set -euo pipefail
+
+die() { echo "${0##*/}: $*" >&2; exit 1; }
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  scripts/pr-status [--repo owner/name] [--author LOGIN] [--days N]
+
+Options:
+  --repo owner/name  Repository to read. Default: TriliumNext/Trilium.
+  --author LOGIN     PR author. Default: maphew.
+  --days N           Window for the merged/closed list. Default: 7.
+
+Needs gh (authenticated) and jq. Changes nothing.
+USAGE
+}
+
+repo="TriliumNext/Trilium"
+author="maphew"
+days=7
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --repo) repo="${2:?}"; shift 2 ;;
+    --author) author="${2:?}"; shift 2 ;;
+    --days) days="${2:?}"; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    *) usage >&2; die "unknown argument: $1" ;;
+  esac
+done
+
+command -v gh >/dev/null || die "gh not found"
+command -v jq >/dev/null || die "jq not found"
+
+# `commits` costs 100 x 100 GraphQL nodes per PR, so the open list stays at 40 PRs.
+
+# Bots whose comments carry no review content.
+noise='^(codecov|codecov-commenter|github-actions|dosubot)(\[bot\])?$'
+
+prs="$(gh pr list --repo "$repo" --author "$author" --state open --limit 40 \
+  --json number,title,isDraft,mergeable,mergeStateStatus,reviewDecision,statusCheckRollup,commits,comments,reviews)"
+
+count="$(jq length <<<"$prs")"
+printf '== %s open PRs by %s in %s ==\n' "$count" "$author" "$repo"
+
+jq -r --arg me "$author" --arg noise "$noise" '
+  sort_by(.number)[] |
+  ([.commits[-1].committedDate,
+    (.comments[] | select(.author.login == $me) | .createdAt),
+    (.reviews[]  | select(.author.login == $me) | .submittedAt)] | max) as $last |
+  ([.statusCheckRollup[]
+    | select((.conclusion // .state // "") | IN("FAILURE","ERROR","TIMED_OUT","CANCELLED"))
+    | (.name // .context)] | unique) as $failed |
+  ([.statusCheckRollup[] | select(.status != null and .status != "COMPLETED")] | length) as $pending |
+  ([(.comments[] | {at: .createdAt, who: .author.login, what: "comment", state: ""}),
+    (.reviews[]  | {at: .submittedAt, who: .author.login, what: "review", state: .state})]
+    | map(select(.who != $me and (.who | test($noise) | not) and .at > $last
+                 and ((.who | test("^greptile")) and .what == "comment" | not)))) as $new |
+  (if ($failed | length) > 0 or ($new | length) > 0 or .mergeable == "CONFLICTING"
+   then "ATTN" else "ok  " end) as $flag |
+  "\($flag) \(.number)  \(.mergeable)/\(.mergeStateStatus)\(if .isDraft then " DRAFT" else "" end)\(if .reviewDecision != "" then " " + .reviewDecision else "" end)  \(.title[0:70])",
+  (if ($failed | length) > 0 then "       failed: \($failed | join(", "))" else empty end),
+  (if $pending > 0 then "       pending checks: \($pending)" else empty end),
+  ($new[] | "       new \(.what) \(.at) \(.who) \(.state)")
+' <<<"$prs"
+
+# Inline review comments are not in `gh pr list`; count the ones newer than our last action.
+printf '\n== Inline review comments newer than our last action ==\n'
+found=0
+while read -r number last; do
+  n="$(gh api "repos/$repo/pulls/$number/comments" --paginate \
+    --jq "[.[] | select(.user.login != \"$author\" and .created_at > \"$last\")] | length")"
+  if [ "${n:-0}" -gt 0 ]; then
+    printf '  %s: %s new inline comment(s): gh api repos/%s/pulls/%s/comments\n' "$number" "$n" "$repo" "$number"
+    found=1
+  fi
+done < <(jq -r --arg me "$author" '.[] | "\(.number) \([.commits[-1].committedDate,
+    (.comments[] | select(.author.login == $me) | .createdAt),
+    (.reviews[] | select(.author.login == $me) | .submittedAt)] | max)"' <<<"$prs")
+[ "$found" -eq 1 ] || echo "  none"
+
+since="$(date -u -d "$days days ago" +%Y-%m-%d)"
+printf '\n== Merged or closed since %s (close the bead, remove the worktree) ==\n' "$since"
+gh pr list --repo "$repo" --author "$author" --state closed --limit 100 \
+  --search "closed:>=$since" --json number,state,title,headRefName \
+  --jq 'sort_by(.number)[] | "  \(.number) \(.state)  \(.headRefName)  \(.title[0:60])"'
